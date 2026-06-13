@@ -127,6 +127,7 @@ dependencies:
       - nbclient==0.10.4
       - nbconvert==7.17.1
       - nbformat==5.10.4
+      - nbimporter==0.3.4
       - nest-asyncio==1.6.0
       - notebook==7.5.6
       - notebook-shim==0.2.4
