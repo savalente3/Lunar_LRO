@@ -5,6 +5,7 @@ import rasterio
 import kagglehub
 from kagglehub import KaggleDatasetAdapter
 import pandas as pd
+import numpy as np
 
 
 class LunarDataset:
@@ -13,21 +14,24 @@ class LunarDataset:
         self.labels = None
         self.globalLunarData = None
         self.regionalLunarData = None
+        self.DEMLunarData = None
         self.mergedData = None
  
         self.loadLunarImages()
-
-        # To heavy to load on init. Need manual invoking
         self.loadRegionalLunarImages()
-        
         self.loadLunarLabels()
+        self.loadDEMLunarData()
         self.generateCraterMasks()
- 
+    
+    # might not be necessary - no analysis for now
     def loadLunarImages(self):
         self.globalLunarData = getGlobalLunarData()
     
     def loadRegionalLunarImages(self):
         self.regionalLunarData = getRegionalLunarData()
+
+    def loadDEMLunarData(self):
+        self.DEMLunarData = getDEMLunarData()
     
     def loadLunarLabels(self):
         self.labels = getLunarRobbinsLabels()
@@ -69,6 +73,15 @@ def getLunarRobbinsLabels(file_path="lunar_crater_database_robbins_2018.csv"):
         "sujaykapadnis/moon-crater-database-v1-robbins",
         file_path,
     ))
+
+def getDEMLunarData():
+    # Raw binary float array — no format header, rasterio cannot detect it. 
+    url = 'http://imbrium.mit.edu/DATA/SLDEM2015/GLOBAL/FLOAT_IMG/SLDEM2015_128_60S_60N_000_360_FLOAT.IMG'
+    
+    response = requests.get(url, allow_redirects=True)
+    data = np.frombuffer(response.content, dtype=np.float32).reshape(15360, 46080)
+
+    return pd.DataFrame(data)
  
  
 def getGeneratedCraterMasks(data, labels):
