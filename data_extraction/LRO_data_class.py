@@ -5,8 +5,8 @@ import rasterio
 import kagglehub
 from kagglehub import KaggleDatasetAdapter
 import pandas as pd
- 
- 
+
+
 class LunarDataset:
  
     def __init__(self):
@@ -16,7 +16,10 @@ class LunarDataset:
         self.mergedData = None
  
         self.loadLunarImages()
+
+        # To heavy to load on init. Need manual invoking
         self.loadRegionalLunarImages()
+        
         self.loadLunarLabels()
         self.generateCraterMasks()
  
@@ -49,11 +52,14 @@ def getGlobalLunarData():
     return pd.DataFrame(data)
  
  
-def getRegionalLunarData():
-    url = "https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_GLOBAL/WAC_GLOBAL_O000N0000_004P.IMG"
+def getRegionalLunarData(tile='WAC_GLOBAL_E300S0450_100M'):
+    url = f'https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_GLOBAL/{tile}.IMG'
+    
     response = requests.get(url)
+    
     with rasterio.open(io.BytesIO(response.content)) as src:
-        data = src.read(1)
+         data = src.read(1)
+
     return pd.DataFrame(data)
  
  

@@ -36,11 +36,11 @@ conda env export > environment.yml
 
 Key packages installed:
 - `pandas` — data wrangling
-- `rasterio` — reading PDS `.IMG` files from LROC
+- `rasterio` — reading PDS `.IMG` files from LROC and LOLA
 - `kagglehub` — fetching the Robbins catalogue
 - `keras` / `tensorflow` — model building and training
 - `mlflow` — experiment tracking
-- `matplotlib` — visualisation
+- `plotly` — visualisation
 
 ---
 
@@ -65,9 +65,11 @@ Note: use `dataset_load()` not `load_dataset()` — the latter is deprecated.
 
 ---
 
-## 3. NASA WAC Imagery (LROC PDS)
+## 3. Primary Image Source — LOLA DEM (LROC PDS)
 
-WAC imagery is downloaded directly from the LROC PDS server — no API key required. Files are loaded into memory using `rasterio` without saving to disk:
+The model is trained on LRO LOLA digital elevation data, not optical imagery. DEMs are illumination-invariant — crater shape reads the same regardless of sun angle. See `NOTE_Synthesis — Data and Labels Strategy` in the Literature folder for the rationale.
+
+DEM tiles are loaded in-memory from the LROC PDS server — no API key required:
 
 ```python
 import requests, rasterio, io
@@ -76,11 +78,11 @@ url = "https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/
 
 response = requests.get(url)
 with rasterio.open(io.BytesIO(response.content)) as src:
-    data = src.read(1)   # numpy array of pixel brightness values
-    transform = src.transform  # used for coordinate conversion in mask generation
+    data = src.read(1)        # numpy array (elevation as pixel intensity)
+    transform = src.transform  # affine transform — used in generateCraterMasks()
 ```
 
-Available resolutions (global mosaic `O000N0000`):
+Available resolutions:
 
 | File suffix | Resolution | File size |
 |---|---|---|
@@ -91,11 +93,19 @@ Available resolutions (global mosaic `O000N0000`):
 | `064P` | | 205 MB |
 | `100M` | highest | 4.5 GB |
 
-Start with `004P` for development, scale up for training.
+Use `004P` for development, scale up for training.
 
 ---
 
-## 4. MLflow Experiment Tracking
+## 4. WAC Optical Imagery (Visualisation Only)
+
+WAC optical imagery is used for visualisation, not model input. It is fetched from the same LROC PDS server using the same in-memory approach as above. WAC is illumination-dependent — crater appearance changes with sun angle — which is why it is not used as model input.
+
+---
+
+---
+
+## 5. MLflow Experiment Tracking
 
 MLflow logs hyperparameters and results for every training run. To view results:
 
