@@ -5,12 +5,17 @@
 ```
 Lunar_LRO/
 ├── data_extraction/
-│   ├── data/
-│   │   ├── LunarData.csv              # Saved WAC image metadata
-│   │   └── LunarLabels.csv            # Saved Robbins catalogue
-│   ├── LRO_data_class.ipynb           # LunarDataset class
-│   ├── Lunar_LRO_images.ipynb         # Fetch WAC imagery from LROC PDS
-│   └── Lunar_Robbins_labels.ipynb     # Fetch Robbins catalogue from Kaggle
+│   ├── LRO_data_class.py              # LunarDataset class and data loading utilities
+│   ├── DEM_data_analysis.ipynb        # EDA on global LOLA DEM (elevation distribution, image quality)
+│   ├── Regional_tiles_analysis.ipynb  # Analysis of regional DEM/WAC tiles
+│   ├── Robbins_labels_analysis.ipynb  # Analysis of Robbins catalogue structure and crater size distributions
+│   └── wac_tile_grid.png              # WAC tile grid reference image
+├── data_preparation/
+│   ├── data_merge.ipynb               # Merges DEM data and Robbins labels for a regional tile
+│   ├── data_merge_reference.md        # Reference notes for the merge process
+│   └── filtered_labels.csv            # Filtered crater labels output
+├── pre_processing/
+│   └── data_pre_processing.ipynb      # Data pre-processing pipeline (patch extraction, mask generation)
 ├── training/
 │   └── training.ipynb                 # Model training + MLflow logging
 ├── environment.yml                    # Conda environment
@@ -36,11 +41,15 @@ conda env export > environment.yml
 
 Key packages installed:
 - `pandas` — data wrangling
+- `numpy` — numerical operations and array handling
 - `rasterio` — reading PDS `.IMG` files from LROC and LOLA
 - `kagglehub` — fetching the Robbins catalogue
-- `keras` / `tensorflow` — model building and training
+- `keras` — model building and training
+- `scikit-learn` — ML utilities (metrics, preprocessing)
 - `mlflow` — experiment tracking
-- `plotly` — visualisation
+- `matplotlib` / `seaborn` — visualisation
+- `pillow` — image I/O
+- `nbimporter` — importing functions across notebooks
 
 ---
 
