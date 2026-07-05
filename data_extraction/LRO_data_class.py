@@ -39,6 +39,9 @@ class LunarDataset:
     def loadFilteredLabels(self):
         self.mergedData = getFilteredLabels()
 
+    def loadBatch(self, batch_num):
+        return getBatch(batch_num)  
+
     def saveFiles(self, output_dir="data"):
         os.makedirs(output_dir, exist_ok=True)
         
@@ -89,3 +92,18 @@ def getFilteredLabels(path='../data_preparation/filtered_labels.csv'):
         return None
     
     return pd.read_csv(path)
+
+def getSplitIndices(splits='../pre_processing/patches'):
+    
+    train_idx = np.load(os.path.join(splits, 'train_idx.npy'))
+    val_idx   = np.load(os.path.join(splits, 'val_idx.npy'))
+    test_idx  = np.load(os.path.join(splits, 'test_idx.npy'))
+    
+    return train_idx, val_idx, test_idx
+
+def getBatch(batch_num, patches_dir='../pre_processing/patches'):
+    wac  = np.load(os.path.join(patches_dir, f'X_wac_norm_{batch_num}.npz'))['arr_0']
+    dem  = np.load(os.path.join(patches_dir, f'X_dem_norm_{batch_num}.npz'))['arr_0']
+    mask = np.load(os.path.join(patches_dir, f'X_mask_{batch_num}.npz'))['arr_0']
+
+    return wac, dem, mask
