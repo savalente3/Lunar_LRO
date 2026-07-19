@@ -49,22 +49,22 @@ class LunarDataset:
     def augment(wac, dem, mask):
         # random horizontal flip
         if np.random.rand() > 0.5:
-            wac  = np.fliplr(wac)
-            dem  = np.fliplr(dem)
-            mask = np.fliplr(mask)
+            wac  = np.fliplr(wac).copy()
+            dem  = np.fliplr(dem).copy()
+            mask = np.fliplr(mask).copy()
 
         # random vertical flip
         if np.random.rand() > 0.5:
-            wac  = np.flipud(wac)
-            dem  = np.flipud(dem)
-            mask = np.flipud(mask)
+            wac  = np.flipud(wac).copy()
+            dem  = np.flipud(dem).copy()
+            mask = np.flipud(mask).copy()
 
         # random 90° rotation (k=1,2,3 → 90°,180°,270°; k=0 → no rotation)
         k = np.random.randint(0, 4)
         if k > 0:
-            wac  = np.rot90(wac, k)
-            dem  = np.rot90(dem, k)
-            mask = np.rot90(mask, k)
+            wac  = np.rot90(wac, k).copy()
+            dem  = np.rot90(dem, k).copy()
+            mask = np.rot90(mask, k).copy()
 
         return wac, dem, mask
 
