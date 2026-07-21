@@ -12,20 +12,14 @@ class LunarDataset:
  
     def __init__(self):
         self.labels = None
-        self.globalLunarData = None
         self.regionalLunarData = None
         self.DEMLunarData = None
         self.mergedData = None
- 
-        self.loadLunarImages()
+
         self.loadRegionalLunarImages()
         self.loadLunarLabels()
         self.loadDEMLunarData()
         self.loadFilteredLabels()
-    
-    # might not be necessary - no analysis for now
-    def loadLunarImages(self):
-        self.globalLunarData = getGlobalLunarData()
     
     def loadRegionalLunarImages(self):
         self.regionalLunarData = getRegionalLunarData()
@@ -39,49 +33,21 @@ class LunarDataset:
     def loadFilteredLabels(self):
         self.mergedData = getFilteredLabels()
 
-    def getNormalisedBatch(self, batch_num):
-        return getNormalisedBatch(batch_num)
+    def getNormalisedBatch(self, batch_num, **kwargs):
+        return getNormalisedBatch(batch_num, **kwargs)
 
-    def getAugmentedBatch(self, batch_num):
-        return getAugmentedBatch(batch_num)
+    def getAugmentedBatch(self, batch_num, **kwargs):
+        return getAugmentedBatch(batch_num, **kwargs)
 
     @staticmethod
-    def augment(wac, dem, mask):
-        # random horizontal flip
-        if np.random.rand() > 0.5:
-            wac  = np.fliplr(wac).copy()
-            dem  = np.fliplr(dem).copy()
-            mask = np.fliplr(mask).copy()
-
-        # random vertical flip
-        if np.random.rand() > 0.5:
-            wac  = np.flipud(wac).copy()
-            dem  = np.flipud(dem).copy()
-            mask = np.flipud(mask).copy()
-
-        # random 90° rotation (k=1,2,3 → 90°,180°,270°; k=0 → no rotation)
-        k = np.random.randint(0, 4)
-        if k > 0:
-            wac  = np.rot90(wac, k).copy()
-            dem  = np.rot90(dem, k).copy()
-            mask = np.rot90(mask, k).copy()
-
-        return wac, dem, mask
+    def augment(wac, dem, mask, rng=None):
+        return augment(wac, dem, mask, rng)
 
     def saveFiles(self, output_dir="data"):
         os.makedirs(output_dir, exist_ok=True)
-        
-        self.globalLunarData.to_csv(os.path.join(output_dir, "WholeLunarData.csv"))
+
         self.regionalLunarData.to_csv(os.path.join(output_dir, "RegionalLunarData.csv"))
         self.labels.to_csv(os.path.join(output_dir, "LunarLabels.csv"))
- 
- 
-def getGlobalLunarData():
-    url = "https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_GLOBAL/WAC_GLOBAL_O000N0000_004P.IMG"
-    response = requests.get(url)
-    with rasterio.open(io.BytesIO(response.content)) as src:
-        data = src.read(1)
-    return pd.DataFrame(data)
  
  
 def getRegionalLunarData(tile='WAC_GLOBAL_E300N1350_100M'):
@@ -127,6 +93,35 @@ def getSplitIndices(splits='../pre_processing/patches'):
     
     return train_idx, val_idx, test_idx
 
+def augment(wac, dem, mask, rng=None):
+    # craters are rotationally symmetric, so flips/rotations are always valid.
+    # pass rng=np.random.default_rng(seed) to make a run reproducible - ablation
+    # runs must share the same augmentation or it becomes a confound.
+    if rng is None:
+        rng = np.random
+
+    # random horizontal flip
+    if rng.random() > 0.5:
+        wac  = np.fliplr(wac).copy()
+        dem  = np.fliplr(dem).copy()
+        mask = np.fliplr(mask).copy()
+
+    # random vertical flip
+    if rng.random() > 0.5:
+        wac  = np.flipud(wac).copy()
+        dem  = np.flipud(dem).copy()
+        mask = np.flipud(mask).copy()
+
+    # random 90 degree rotation (k=1,2,3 -> 90,180,270; k=0 -> none)
+    k = rng.integers(0, 4) if hasattr(rng, 'integers') else rng.randint(0, 4)
+    if k > 0:
+        wac  = np.rot90(wac, k).copy()
+        dem  = np.rot90(dem, k).copy()
+        mask = np.rot90(mask, k).copy()
+
+    return wac, dem, mask
+
+
 def percentileNormalise(patch, low=1, high=99):
     """Clip to percentile range, rescale to [0, 1]. Robust to outliers."""
     p_low, p_high = np.percentile(patch, [low, high])
@@ -134,15 +129,20 @@ def percentileNormalise(patch, low=1, high=99):
 
 
 def getNormalisedBatch(batch_num, patches_dir='../pre_processing/patches'):
+    if not os.path.exists(os.path.join(patches_dir, f'X_wac_{batch_num}.npz')):
+        raise FileNotFoundError(
+            f'batch {batch_num} not found in {patches_dir} '
+            f'(valid range 0-211; paths are relative to the notebook directory)')
+
     wac  = np.load(os.path.join(patches_dir, f'X_wac_{batch_num}.npz'))['arr_0']
     dem  = np.load(os.path.join(patches_dir, f'X_dem_{batch_num}.npz'))['arr_0']
     mask = np.load(os.path.join(patches_dir, f'X_mask_{batch_num}.npz'))['arr_0']
 
     # both are float32 with variable per-patch range:
     #   WAC - reflectance (I/F), tile range ~[0, 0.4], varies with illumination
-    #         (NOT 8-bit DN - verified against all 8 tiles: float32, negative minima)
-    #   DEM - elevation in km, varies with terrain
-    # per-patch percentile normalisation handles both and is robust to spikes
+    #   DEM - elevation in km
+
+    # per-patch percentile normalisation
     norm_wac = np.zeros_like(wac, dtype=np.float32)
     norm_dem = np.zeros_like(dem, dtype=np.float32)
 
@@ -153,11 +153,10 @@ def getNormalisedBatch(batch_num, patches_dir='../pre_processing/patches'):
     return norm_wac, norm_dem, mask
 
 
-def getAugmentedBatch(batch_num, patches_dir='../pre_processing/patches'):
+def getAugmentedBatch(batch_num, patches_dir='../pre_processing/patches', rng=None):
     wac, dem, mask = getNormalisedBatch(batch_num, patches_dir)
 
-    # apply random augmentation to each patch independently
     for j in range(len(wac)):
-        wac[j], dem[j], mask[j] = LunarDataset.augment(wac[j], dem[j], mask[j])
+        wac[j], dem[j], mask[j] = augment(wac[j], dem[j], mask[j], rng)
 
     return wac, dem, mask
