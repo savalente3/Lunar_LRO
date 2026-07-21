@@ -127,20 +127,28 @@ def getSplitIndices(splits='../pre_processing/patches'):
     
     return train_idx, val_idx, test_idx
 
+def percentileNormalise(patch, low=1, high=99):
+    """Clip to percentile range, rescale to [0, 1]. Robust to outliers."""
+    p_low, p_high = np.percentile(patch, [low, high])
+    return (np.clip(patch, p_low, p_high) - p_low) / (p_high - p_low + 1e-8)
+
+
 def getNormalisedBatch(batch_num, patches_dir='../pre_processing/patches'):
     wac  = np.load(os.path.join(patches_dir, f'X_wac_{batch_num}.npz'))['arr_0']
     dem  = np.load(os.path.join(patches_dir, f'X_dem_{batch_num}.npz'))['arr_0']
     mask = np.load(os.path.join(patches_dir, f'X_mask_{batch_num}.npz'))['arr_0']
 
-    # WAC: 8-bit uint8 -> float32 [0, 1]
-    norm_wac = wac.astype(np.float32) / 255.0
-
-    # DEM: percentile-based min-max per patch -> float32 [0, 1]
-    # per-patch because elevation range varies across the tile
+    # both are float32 with variable per-patch range:
+    #   WAC - reflectance (I/F), tile range ~[0, 0.4], varies with illumination
+    #         (NOT 8-bit DN - verified against all 8 tiles: float32, negative minima)
+    #   DEM - elevation in km, varies with terrain
+    # per-patch percentile normalisation handles both and is robust to spikes
+    norm_wac = np.zeros_like(wac, dtype=np.float32)
     norm_dem = np.zeros_like(dem, dtype=np.float32)
-    for j in range(len(dem)):
-        p1, p99 = np.percentile(dem[j], [1, 99])
-        norm_dem[j] = (np.clip(dem[j], p1, p99) - p1) / (p99 - p1 + 1e-8)
+
+    for j in range(len(wac)):
+        norm_wac[j] = percentileNormalise(wac[j])
+        norm_dem[j] = percentileNormalise(dem[j])
 
     return norm_wac, norm_dem, mask
 
