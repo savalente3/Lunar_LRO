@@ -39,6 +39,9 @@ class LunarDataset:
     def getAugmentedBatch(self, batch_num, **kwargs):
         return getAugmentedBatch(batch_num, **kwargs)
 
+    def patchGenerator(self, indices, **kwargs):
+        return patchGenerator(indices, **kwargs)
+
     @staticmethod
     def augment(wac, dem, mask, rng=None):
         return augment(wac, dem, mask, rng)
@@ -160,3 +163,74 @@ def getAugmentedBatch(batch_num, patches_dir='../pre_processing/patches', rng=No
         wac[j], dem[j], mask[j] = augment(wac[j], dem[j], mask[j], rng)
 
     return wac, dem, mask
+
+
+def stepsPerEpoch(indices, batch_size=8):
+    """Number of training batches in one pass over `indices`."""
+    return len(indices) // batch_size
+
+
+def patchGenerator(indices, batch_size=8, channels='both', augment_data=True,
+                   patches_dir='../pre_processing/patches', rng=None,
+                   file_size=1000):
+    """Yield (X, y) training batches from the .npz patch files, forever.
+
+    Patches are stored 1000 per file, so global patch index i lives at
+    position i % file_size in file i // file_size. This walks the files in a
+    shuffled order, shuffles the wanted positions inside each one, and emits
+    fixed-size batches - so consecutive batches are not all the same terrain.
+
+    channels: 'both' -> X (B,256,256,2) [wac, dem]   <- fusion model
+              'wac'  -> X (B,256,256,1)              <- ablation
+              'dem'  -> X (B,256,256,1)              <- baseline
+    y is always (B,256,256,1) float32.
+
+    Infinite by design: Keras fit() pulls batches until steps_per_epoch is hit,
+    so pass steps_per_epoch=stepsPerEpoch(indices, batch_size).
+    Set augment_data=False for validation and test.
+    """
+    if channels not in ('both', 'wac', 'dem'):
+        raise ValueError(f"channels must be 'both', 'wac' or 'dem', got {channels!r}")
+
+    if rng is None:
+        rng = np.random
+
+    # group global indices by the file they live in
+    by_file = {}
+    for idx in indices:
+        by_file.setdefault(idx // file_size, []).append(idx % file_size)
+    file_nums = np.array(sorted(by_file))
+
+    buf_wac, buf_dem, buf_mask = [], [], []
+
+    while True:
+        for f in rng.permutation(file_nums):
+            wac, dem, mask = getNormalisedBatch(int(f), patches_dir)
+
+            positions = np.array(by_file[int(f)])
+            for p in rng.permutation(positions):
+                w, d, m = wac[p], dem[p], mask[p]
+
+                if augment_data:
+                    w, d, m = augment(w, d, m, rng)
+
+                buf_wac.append(w)
+                buf_dem.append(d)
+                buf_mask.append(m)
+
+                if len(buf_wac) == batch_size:
+                    w_arr = np.asarray(buf_wac, dtype=np.float32)
+                    d_arr = np.asarray(buf_dem, dtype=np.float32)
+                    m_arr = np.asarray(buf_mask, dtype=np.float32)
+
+                    if channels == 'both':
+                        X = np.stack([w_arr, d_arr], axis=-1)
+                    elif channels == 'wac':
+                        X = w_arr[..., None]
+                    else:
+                        X = d_arr[..., None]
+
+                    y = m_arr[..., None]
+
+                    buf_wac, buf_dem, buf_mask = [], [], []
+                    yield X, y
