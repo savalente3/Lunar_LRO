@@ -49,7 +49,7 @@ class LunarDataset:
     def saveFiles(self, output_dir="data"):
         os.makedirs(output_dir, exist_ok=True)
 
-        self.regionalLunarData.to_csv(os.path.join(output_dir, "RegionalLunarData.csv"))
+        np.save(os.path.join(output_dir, "RegionalLunarData.npy"), self.regionalLunarData)
         self.labels.to_csv(os.path.join(output_dir, "LunarLabels.csv"))
  
  
@@ -61,7 +61,7 @@ def getRegionalLunarData(tile='WAC_GLOBAL_E300N1350_100M'):
     with rasterio.open(io.BytesIO(response.content)) as src:
          data = src.read(1)
 
-    return pd.DataFrame(data)
+    return data
  
  
 def getLunarRobbinsLabels(file_path="lunar_crater_database_robbins_2018.csv"):
@@ -78,7 +78,7 @@ def getDEMLunarData():
     response = requests.get(url, allow_redirects=True)
     data = np.frombuffer(response.content, dtype=np.float32).reshape(15360, 46080)
 
-    return pd.DataFrame(data)
+    return data
  
  
 def getFilteredLabels(path='../data_preparation/filtered_labels.csv'):
