@@ -88,7 +88,7 @@ def getFilteredLabels(path='../data_preparation/filtered_labels.csv'):
     
     return pd.read_csv(path)
 
-def getSplitIndices(splits='../pre_processing/patches'):
+def getSplitIndices(splits='/Volumes/WIN10/lunar_patches'):
     
     train_idx = np.load(os.path.join(splits, 'train_idx.npy'))
     val_idx   = np.load(os.path.join(splits, 'val_idx.npy'))
@@ -131,7 +131,7 @@ def percentileNormalise(patch, low=1, high=99):
     return (np.clip(patch, p_low, p_high) - p_low) / (p_high - p_low + 1e-8)
 
 
-def getNormalisedBatch(batch_num, patches_dir='../pre_processing/patches'):
+def getNormalisedBatch(batch_num, patches_dir='/Volumes/WIN10/lunar_patches'):
     if not os.path.exists(os.path.join(patches_dir, f'X_wac_{batch_num}.npz')):
         raise FileNotFoundError(
             f'batch {batch_num} not found in {patches_dir} '
@@ -156,7 +156,7 @@ def getNormalisedBatch(batch_num, patches_dir='../pre_processing/patches'):
     return norm_wac, norm_dem, mask
 
 
-def getAugmentedBatch(batch_num, patches_dir='../pre_processing/patches', rng=None):
+def getAugmentedBatch(batch_num, patches_dir='/Volumes/WIN10/lunar_patches', rng=None):
     wac, dem, mask = getNormalisedBatch(batch_num, patches_dir)
 
     for j in range(len(wac)):
@@ -171,7 +171,7 @@ def stepsPerEpoch(indices, batch_size=8):
 
 
 def patchGenerator(indices, batch_size=8, channels='both', augment_data=True,
-                   patches_dir='../pre_processing/patches', rng=None,
+                   patches_dir='/Volumes/WIN10/lunar_patches', rng=None,
                    file_size=1000):
     """Yield (X, y) training batches from the .npz patch files, forever.
 
