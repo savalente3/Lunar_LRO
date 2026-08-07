@@ -135,7 +135,6 @@ dependencies:
       - prometheus-client==0.25.0
       - prompt-toolkit==3.0.52
       - propcache==0.5.2
-      - protobuf==6.33.6
       - psutil==7.2.2
       - ptyprocess==0.7.0
       - pure-eval==0.2.3
