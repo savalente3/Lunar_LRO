@@ -11,10 +11,11 @@ Lunar_LRO/
 │   ├── Robbins_labels_analysis.ipynb  # Analysis of Robbins catalogue structure and crater size distributions
 │   └── wac_tile_grid.png              # WAC tile grid reference image
 ├── data_preparation/
-│   ├── data_merge.ipynb               # Merges DEM data and Robbins labels for a regional tile
-│   └── filtered_labels.csv            # Filtered crater labels output
+│   ├── data_merge.ipynb               # Merges DEM data and Robbins labels — single tile (E300N1350)
+│   └── data_merge_alltiles.ipynb      # Same, widened to all 8 WAC tiles (full 60°S–60°N band)
 ├── pre_processing/
-│   └── data_pre_processing.ipynb      # Data pre-processing pipeline (patch extraction, mask generation)
+│   ├── data_pre_processing.ipynb            # Patch extraction + mask generation — single tile
+│   └── data_pre_processing_alltiles.ipynb   # Same, looped over all 8 tiles
 ├── training/
 │   ├── data_handover.md               # Handover notes for the pre-processed patch dataset (formats, splits, loading)
 │   └── model_v1.ipynb                 # Model training + MLflow logging
