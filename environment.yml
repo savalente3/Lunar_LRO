@@ -24,7 +24,7 @@ dependencies:
       - babel==2.18.0
       - bleach==6.3.0
       - blinker==1.9.0
-      - cachetools==7.1.4
+      - cachetools
       - certifi==2026.5.20
       - cffi==2.0.0
       - charset-normalizer==3.4.7
@@ -56,14 +56,14 @@ dependencies:
       - graphql-core==3.2.11
       - graphql-relay==3.2.0
       - greenlet==3.5.1
-      - gunicorn==26.0.0
+      - gunicorn
       - h11==0.16.0
       - h5py==3.16.0
       - httpcore==1.0.9
       - httpx==0.28.1
       - huey==3.0.1
       - idna==3.16
-      - importlib-metadata==9.0.0
+      - importlib-metadata
       - ipykernel==7.2.0
       - ipython==9.13.0
       - ipython-pygments-lexers==1.1.1
@@ -118,7 +118,7 @@ dependencies:
       - numpy==1.26.4
       - optree==0.19.1
       - overrides==7.7.0
-      - packaging==26.2
+      - packaging
       - pandas==2.3.3
       - pandocfilters==1.5.1
       - parso==0.8.7
@@ -132,7 +132,7 @@ dependencies:
       - psutil==7.2.2
       - ptyprocess==0.7.0
       - pure-eval==0.2.3
-      - pyarrow==24.0.0
+      - pyarrow
       - pyasn1==0.6.3
       - pyasn1-modules==0.4.2
       - pycparser==3.0
