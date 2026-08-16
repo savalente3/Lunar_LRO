@@ -89,7 +89,10 @@ def filter_to_detectable(coords, minrad=5, maxrad=50):
 
 # Matches detections against ground truth.
 # returns full pairs (det x,y,r then truth x,y,r) -> diameter bins, error plots
-# plus detections that matched nothing -> false positive inspection
+# detections that matched nothing -> false positive inspection
+# multi_match_count -> how often one detection claimed several truth craters.
+# DeepMoon tracks the same thing as frac_dupes. non-zero means the radius-relative
+# tolerance is binding too loosely in dense fields - see CONCEPT_Evaluation.md
 
 def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh=1.0):
 
@@ -101,6 +104,7 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
 
     matched_pairs = []
     false_positives = []
+    multi_match_count = 0
 
     for det_x, det_y, det_radius in crater_detections:
 
@@ -109,7 +113,9 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
             continue
 
         truth_x, truth_y, truth_radius = remaining_truth.T
-        smaller_radius = np.minimum(det_radius, truth_radius)
+
+        # clip at 1 px - a zero radius would divide by zero below
+        smaller_radius = np.maximum(np.minimum(det_radius, truth_radius), 1)
 
         # both tests divided by radius - "close" scales with crater size
         dist_ratio = ((truth_x - det_x)**2 + (truth_y - det_y)**2) / smaller_radius**2
@@ -121,6 +127,10 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
             # first match in array order, as DeepMoon does - not the closest
             hit = remaining_truth[np.where(is_match == True)][0]
             matched_pairs.append([det_x, det_y, det_radius, hit[0], hit[1], hit[2]])
+
+            # one detection claimed several truth craters - the others are lost
+            if is_match.sum() > 1:
+                multi_match_count += 1
         else:
             false_positives.append([det_x, det_y, det_radius])
 
@@ -129,4 +139,55 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
         # a matched truth crater cannot be claimed twice
         remaining_truth = remaining_truth[np.where(is_match == False)]
 
-    return match_count, detection_count, truth_count, np.asarray(matched_pairs), np.asarray(false_positives)
+    return match_count, detection_count, truth_count, np.asarray(matched_pairs), np.asarray(false_positives), multi_match_count
+
+
+# Robbins craters inside one patch, in patch pixel coords.
+# same transform as maskGeneration - so the truth matches the mask the model
+# trained on. needs filtered_labels (every crater), not kept_labels (one row
+# per patch): a patch holds many craters, only one of which centred it.
+
+def truth_coords_for_patch(center_col, center_row, patch_lat, wac_col, wac_row, diameters):
+
+    cos_lat = np.cos(np.radians(patch_lat))
+
+    # patch covers 128 px N-S but 128/cos(lat) px E-W in the original tile
+    half_col = 128 / cos_lat
+
+    in_patch = (
+        (wac_col >= center_col - half_col) & (wac_col < center_col + half_col) &
+        (wac_row >= center_row - 128) & (wac_row < center_row + 128)
+    )
+
+    if in_patch.sum() == 0:
+        return np.empty((0, 3))
+
+    # column offsets shrink by cos(lat) when the wide window is resized back to 256
+    rel_col = 128 + (wac_col[in_patch] - center_col) * cos_lat
+    rel_row = 128 + (wac_row[in_patch] - center_row)
+    radius = (diameters[in_patch] / 2) / 0.1
+
+    return np.column_stack([rel_col, rel_row, radius])
+
+
+# Drops craters too close to the patch edge to appear as a full ring.
+# a crater centred inside the patch can still have most of its rim outside -
+# maskGeneration clips the ring, template matching cannot recover an arc, so it
+# is a guaranteed miss and deflates recall.
+# cutrad=0.8 is DeepMoon's value (get_metrics in model_train.py)
+
+def filter_edge_craters(coords, dim=256, cutrad=0.8):
+
+    coords = np.asarray(coords)
+
+    if len(coords) == 0:
+        return coords
+
+    x, y, radius = coords.T
+
+    inside = (
+        (x + cutrad * radius <= dim) & (x - cutrad * radius > 0) &
+        (y + cutrad * radius <= dim) & (y - cutrad * radius > 0)
+    )
+
+    return coords[np.where(inside == True)]
