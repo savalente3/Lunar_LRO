@@ -1,10 +1,6 @@
-# Crater extraction and matching for evaluation.
-
-# Shared by every model run - the baseline and the proposed model must use the
-# identical extraction, or metric differences cannot be attributed to the model.
-
-# maxrad=50, not DeepMoon's 40: at a fixed 100 m/px, r=40 caps detection at 8 km
-# and misses the top of the 1-10 km range. See global_project_notes.md 13.5
+# Crater extraction and matching
+# shared by every run - differences here would look like model differences
+# maxrad=50 not DeepMoon's 40: at 100 m/px, r=40 caps at 8 km. notes 13.5
 
 
 import numpy as np
@@ -74,25 +70,63 @@ def template_match_t(target, minrad=5, maxrad=50, longlat_thresh2=1.8, rad_thres
     return coords
 
 
+# Drops craters outside the detectable radius range.
+# masks hold craters below minrad - no template can match them
+# counting those as misses penalises the model for what it can't find
+# same idea as DeepMoon's rmv_oor_csvs flag
+
+def filter_to_detectable(coords, minrad=5, maxrad=50):
+
+    coords = np.asarray(coords)
+
+    if len(coords) == 0:
+        return coords
+
+    in_range = (coords[:, 2] >= minrad) & (coords[:, 2] <= maxrad)
+
+    return coords[np.where(in_range == True)]
+
+
+# Matches detections against ground truth.
+# returns full pairs (det x,y,r then truth x,y,r) -> diameter bins, error plots
+# plus detections that matched nothing -> false positive inspection
+
 def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh=1.0):
-    gt = np.asarray(ground_truth).copy()
-    n_gt, n_det = len(gt), len(crater_detections)
-    n_match = 0
 
-    for x, y, r in crater_detections:
-        
-        if len(gt) == 0:
-            break
-        
-        X, Y, R = gt.T
-        minr = np.minimum(r, R)
+    remaining_truth = np.asarray(ground_truth).copy()
 
-        dL = ((X - x)**2 + (Y - y)**2) / minr**2
-        dR = abs(R - r) / minr
+    truth_count = len(remaining_truth)
+    detection_count = len(crater_detections)
+    match_count = 0
 
-        index = (dR < rad_thresh) & (dL < longlat_thresh)
-        n_match += min(1, index.sum())
-        
-        gt = gt[np.where(index == False)]
-    
-    return n_match, n_det, n_gt
+    matched_pairs = []
+    false_positives = []
+
+    for det_x, det_y, det_radius in crater_detections:
+
+        if len(remaining_truth) == 0:
+            false_positives.append([det_x, det_y, det_radius])
+            continue
+
+        truth_x, truth_y, truth_radius = remaining_truth.T
+        smaller_radius = np.minimum(det_radius, truth_radius)
+
+        # both tests divided by radius - "close" scales with crater size
+        dist_ratio = ((truth_x - det_x)**2 + (truth_y - det_y)**2) / smaller_radius**2
+        radius_ratio = abs(truth_radius - det_radius) / smaller_radius
+
+        is_match = (radius_ratio < rad_thresh) & (dist_ratio < longlat_thresh)
+
+        if is_match.sum() > 0:
+            # first match in array order, as DeepMoon does - not the closest
+            hit = remaining_truth[np.where(is_match == True)][0]
+            matched_pairs.append([det_x, det_y, det_radius, hit[0], hit[1], hit[2]])
+        else:
+            false_positives.append([det_x, det_y, det_radius])
+
+        match_count += min(1, is_match.sum())
+
+        # a matched truth crater cannot be claimed twice
+        remaining_truth = remaining_truth[np.where(is_match == False)]
+
+    return match_count, detection_count, truth_count, np.asarray(matched_pairs), np.asarray(false_positives)

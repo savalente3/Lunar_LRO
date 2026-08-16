@@ -3,3 +3,6 @@ data_extraction/data/
 patches/
 data_preparation/*.csv
 training/checkpoints/
+pre_processing/lunar_patches/
+pre_processing/lunar_patches_alltiles/
+training/mlruns/
