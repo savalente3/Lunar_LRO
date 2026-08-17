@@ -6,3 +6,4 @@ training/checkpoints/
 pre_processing/lunar_patches/
 pre_processing/lunar_patches_alltiles/
 training/mlruns/
+__pycache__/
