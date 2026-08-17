@@ -7,7 +7,7 @@ Lunar_LRO/
 ├── data_extraction/
 │   ├── LRO_data_class.py              # LunarDataset class and data loading utilities
 │   ├── DEM_data_analysis.ipynb        # EDA on global LOLA DEM (elevation distribution, image quality)
-│   ├── Regional_tiles_analysis.ipynb  # Analysis of regional DEM/WAC tiles
+│   ├── Regional_tiles_analysis.ipynb  # Analysis of regional WAC tiles
 │   ├── Robbins_labels_analysis.ipynb  # Analysis of Robbins catalogue structure and crater size distributions
 │   └── wac_tile_grid.png              # WAC tile grid reference image
 ├── data_preparation/
@@ -17,8 +17,9 @@ Lunar_LRO/
 │   ├── data_pre_processing.ipynb            # Patch extraction + mask generation — single tile
 │   └── data_pre_processing_alltiles.ipynb   # Same, looped over all 8 tiles
 ├── training/
-│   ├── data_handover.md               # Handover notes for the pre-processed patch dataset (formats, splits, loading)
-│   └── model_v1.ipynb                 # Model training + MLflow logging
+│   ├── crater_extraction.py           # Template matching and ground-truth matching for crater-level evaluation
+│   ├── model_v1.ipynb                 # Model training, MLflow logging, and crater-level evaluation
+│   └── checkpoints/                   # Saved model weights per training run (gitignored)
 ├── environment.yml                    # Conda environment
 └── README.md                          # This file
 ```
@@ -48,8 +49,8 @@ Key packages installed:
 - `tensorflow` / `keras` — model building and training (U-Net)
 - `scikit-learn` — ML utilities (metrics, preprocessing)
 - `mlflow` — experiment tracking (pinned to the 2.x line — 3.x made OpenTelemetry tracing a hard dependency, which conflicts with the protobuf version tensorflow needs)
-- `opencv-python` — image resizing in the pre-processing pipeline
-- `scikit-image` — drawing crater rim masks
+- `opencv-python` — image resizing in the pre-processing pipeline, and template construction for crater matching in evaluation
+- `scikit-image` — drawing crater rim masks, and template matching for crater extraction (`skimage.feature.match_template`)
 - `matplotlib` / `seaborn` — visualisation
 - `pillow` — image I/O
 - `nbimporter` — importing functions across notebooks
@@ -87,7 +88,7 @@ Note: use `dataset_load()` not `load_dataset()` — the latter is deprecated.
 
 ## 3. Primary Image Source — LOLA DEM (SLDEM2015)
 
-The model is trained on SLDEM2015 digital elevation data (a hybrid LOLA + Kaguya product), not optical imagery. DEMs are illumination-invariant — crater shape reads the same regardless of sun angle. See `NOTE_Synthesis — Data and Labels Strategy` in the Literature folder for the rationale.
+The model is trained on SLDEM2015 digital elevation data (a hybrid LOLA + Kaguya product). DEMs are illumination-invariant — crater shape reads the same regardless of sun angle, which is why DEM is used in every training configuration: alone as the baseline, and fused with WAC as the default multi-modal input (see Section 4). See `NOTE_Synthesis — Data and Labels Strategy` in the Literature folder for the rationale.
 
 The global DEM (60°S–60°N, 128 px/degree) is loaded in-memory — no API key required. The file is a raw binary float array with no format header, so it is read with NumPy rather than rasterio:
 
@@ -103,9 +104,9 @@ data = np.frombuffer(response.content, dtype=np.float32).reshape(15360, 46080)
 
 ---
 
-## 4. WAC Optical Imagery (Visualisation Only)
+## 4. WAC Optical Imagery
 
-WAC optical imagery is used for visualisation, not model input. WAC is illumination-dependent — crater appearance changes with sun angle — which is why it is not used as model input.
+WAC optical imagery is used for visualisation, and as the second input channel in the default multi-modal model (`training/model_v1.ipynb`, `channels='both'`), fused with the DEM. WAC is illumination-dependent — crater appearance changes with sun angle — which is why a DEM-only configuration (`channels='dem'`) is also kept as an illumination-invariant baseline for comparison.
 
 WAC tiles are loaded in-memory from the LROC PDS server — no API key required:
 
