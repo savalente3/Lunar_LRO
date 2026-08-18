@@ -62,9 +62,13 @@ def template_match_t(target, minrad=5, maxrad=50, longlat_thresh2=1.8, rad_thres
         if len(np.where(index == True)[0]) > 1:
             coords_i = coords[np.where(index == True)]
             corr_i = corr[np.where(index == True)]
-            coords[i] = coords_i[corr_i == np.max(corr_i)][0]
+            best = np.max(corr_i)
+            coords[i] = coords_i[corr_i == best][0]
+            corr[i] = best
             index[i] = False
             coords = coords[np.where(index == False)]
+            # DeepMoon drops from coords only - corr then indexes the wrong craters
+            corr = corr[np.where(index == False)]
         N, i = len(coords), i + 1
 
     return coords
@@ -136,7 +140,9 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
 
         match_count += min(1, is_match.sum())
 
-        # a matched truth crater cannot be claimed twice
+        # a matched truth crater cannot be claimed twice. one detection matching
+        # several drops them all but scores 1 - deflates recall, DeepMoon does the
+        # same so the baseline carries it too. multi_match_count is the size of it
         remaining_truth = remaining_truth[np.where(is_match == False)]
 
     return match_count, detection_count, truth_count, np.asarray(matched_pairs), np.asarray(false_positives), multi_match_count
