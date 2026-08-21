@@ -29,8 +29,8 @@ import glob
 import numpy as np
 
 
-PATCHES_DIR = '../pre_processing/patches'
-OUT_DIR = '../pre_processing/patches'   # same dir; big files, 1.4 TB is fine
+PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
+OUT_DIR = '../3_pre_processing/lunar_patches_alltiles'   # same dir; big files, 1.4 TB is fine
 FILE_SIZE = 1000                         # patches per .npz batch
 
 
