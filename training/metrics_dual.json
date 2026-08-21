@@ -1,0 +1,31 @@
+{
+  "mode": "dual",
+  "threshold": 0.5,
+  "pixel": {
+    "pixel_precision": 0.1884,
+    "pixel_recall": 0.5025,
+    "pixel_f1": 0.274,
+    "iou": 0.1588,
+    "confusion": {
+      "tp": 764425.0,
+      "fp": 3293707.0,
+      "fn": 756964.0,
+      "tn": 58099464.0
+    },
+    "threshold": 0.5
+  },
+  "crater_level": {
+    "crater_precision": 0.3793,
+    "crater_recall": 0.6079,
+    "crater_f1": 0.4671,
+    "tp": 3638,
+    "fp": 5954,
+    "fn": 2347,
+    "n_patches_scored": 240
+  },
+  "figures": {
+    "overlay": "overlay_dual.png",
+    "pr_curve": "pr_curve_dual.png",
+    "confusion": "confusion_dual.png"
+  }
+}

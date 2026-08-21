@@ -1,0 +1,28 @@
+nohup: ignoring input
+211034 patches across 212 batches
+  10/212 batches (10000 patches)
+  20/212 batches (20000 patches)
+  30/212 batches (30000 patches)
+  40/212 batches (40000 patches)
+  50/212 batches (50000 patches)
+  60/212 batches (60000 patches)
+  70/212 batches (70000 patches)
+  80/212 batches (80000 patches)
+  90/212 batches (90000 patches)
+  100/212 batches (100000 patches)
+  110/212 batches (110000 patches)
+  120/212 batches (120000 patches)
+  130/212 batches (130000 patches)
+  140/212 batches (140000 patches)
+  150/212 batches (150000 patches)
+  160/212 batches (160000 patches)
+  170/212 batches (170000 patches)
+  180/212 batches (180000 patches)
+  190/212 batches (190000 patches)
+  200/212 batches (200000 patches)
+  210/212 batches (210000 patches)
+Done. 211034 patches -> dem_all.npy, wac_all.npy, mask_all.npy
+Traceback (most recent call last):
+  File "/home/ppxnk1/Dissertation/Lunar_LRO/training/train_gpu.py", line 21, in <module>
+    import keras
+ModuleNotFoundError: No module named 'keras'
