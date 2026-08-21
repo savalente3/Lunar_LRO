@@ -1,0 +1,30 @@
+nohup: ignoring input
+=== training dem ===
+train 136109, val 34699
+Epoch 1/15
+Traceback (most recent call last):
+  File "/home/ppxnk1/Dissertation/Lunar_LRO/training/train_gpu.py", line 139, in <module>
+    main()
+  File "/home/ppxnk1/Dissertation/Lunar_LRO/training/train_gpu.py", line 128, in main
+    history = model.fit(train_gen, validation_data=val_gen,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ppxnk1/anaconda3/envs/lunar_gpu/lib/python3.11/site-packages/keras/src/utils/traceback_utils.py", line 122, in error_handler
+    raise e.with_traceback(filtered_tb) from None
+  File "/home/ppxnk1/anaconda3/envs/lunar_gpu/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1532, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ppxnk1/anaconda3/envs/lunar_gpu/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1541, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ppxnk1/anaconda3/envs/lunar_gpu/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1532, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ppxnk1/anaconda3/envs/lunar_gpu/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1541, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.cuda.OutOfMemoryError: Exception encountered when calling Conv2D.call().
+
+[1mCUDA out of memory. Tried to allocate 64.00 MiB. GPU [0m
+
+Arguments received by Conv2D.call():
+  • inputs=torch.Tensor(shape=torch.Size([8, 256, 256, 1]), dtype=float32)
