@@ -1,12 +1,6 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# # Model V1
-# 
+# Model V1
+#
 # Training only - metrics and figures are in `5_evaluation/evaluation.ipynb`.
-
-# In[ ]:
-
 
 import sys
 sys.path.append('../1_data_extraction')
@@ -34,9 +28,6 @@ else:
 print(tf.config.list_physical_devices('GPU'))
 
 
-# In[ ]:
-
-
 train_idx, val_idx, test_idx = getSplitIndices(PATCHES_DIR)
 print(f'train: {len(train_idx)}  val: {len(val_idx)}  test: {len(test_idx)}')
 
@@ -48,10 +39,7 @@ print(f'dem  {dem.shape}  {dem.dtype}   [{dem.min():.3f}, {dem.max():.3f}]')
 print(f'mask {mask.shape}  {mask.dtype}   crater pixels {mask.mean()*100:.2f}%')
 
 
-# ## Hyperparameters
-
-# In[ ]:
-
+# Hyperparameters
 
 # all hyperparameters in one place — change here and MLflow logs them automatically
 
@@ -78,7 +66,7 @@ params = {
     'batch_size': 8,
     'epochs': 20,
     'loss': 'binary_focal_crossentropy',
-    'focal_alpha': 0.75,                # weight on class 1, the rim. rare at 37:1 so it takes the larger share
+    'focal_alpha': 0.75,                # weight on class 1, the rim. rare at 37:1 so it takes the lrager share
     'focal_gamma': 2.0,
     'focal_class_balancing': True,
     'model': 'U-Net-v1',
@@ -88,12 +76,9 @@ params = {
 }
 
 
-# ## Data
-# 
+# Data
+#
 # Streams from memory-mapped `.npy` arrays (`../training/convert_to_memmap.py`, run once - only its paths were changed). Replaces the old `.npz`-per-epoch reload.
-
-# In[ ]:
-
 
 # patches are pre-normalised into memory-mapped .npy by ../training/convert_to_memmap.py
 # (only its paths changed). Same file/position ordering as before - the .npz load and the
@@ -123,6 +108,7 @@ class MemmapPatchSequence(keras.utils.PyDataset):
         for i in indices:
             self.by_file.setdefault(int(i // 1000), []).append(int(i % 1000))
 
+        self.cache = {}
         self.buildOrder()
 
     def buildOrder(self):
@@ -141,6 +127,21 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
         self.order = order
 
+    def loadFile(self, file_num):
+
+        if self.cache.get('file') == file_num:
+            return
+
+        # one sequential 1000-patch read, then served from RAM for the ~125 batches
+        # inside it. a seek per patch across 375 GB is what made a step 435 ms
+        lo = file_num * 1000
+        hi = lo + 1000
+
+        self.cache['wac'] = np.asarray(self.wac[lo:hi], np.float32)
+        self.cache['dem'] = np.asarray(self.dem[lo:hi], np.float32)
+        self.cache['mask'] = np.asarray(self.mask[lo:hi], np.float32)
+        self.cache['file'] = file_num
+
     def __len__(self):
         return len(self.order) // params['batch_size']
 
@@ -153,11 +154,11 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
         for j, (file_num, position) in enumerate(items):
 
-            patch_idx = file_num * 1000 + position
+            self.loadFile(file_num)
 
-            wac_patch = np.asarray(self.wac[patch_idx], np.float32)
-            dem_patch = np.asarray(self.dem[patch_idx], np.float32)
-            mask_patch = np.asarray(self.mask[patch_idx], np.float32)
+            wac_patch = self.cache['wac'][position]
+            dem_patch = self.cache['dem'][position]
+            mask_patch = self.cache['mask'][position]
 
             if self.augment_data:
                 wac_patch, dem_patch, mask_patch = augment(wac_patch, dem_patch, mask_patch, self.rng)
@@ -188,10 +189,7 @@ val_seq = MemmapPatchSequence(val_idx, PATCHES_DIR, params['seed'], augment_data
 print(f'{len(train_seq)} train steps, {len(val_seq)} val steps per epoch')
 
 
-# ## Model Architecture
-
-# In[ ]:
-
+# Model Architecture
 
 img_input = keras.Input(shape=(params['dim'], params['dim'], params['input_channels']))
 
@@ -343,7 +341,7 @@ d2 = Conv2D(
     padding='same'
 )(d2)
 
-# Decoder3
+# Deocder3
 d3CT = Conv2DTranspose(params['n_filters']*2, kernel_size=2, strides=2, padding='same')(d2)
 d3c = Concatenate()([d3CT, a2])
 x3 = Dropout(params['dropout'])(d3c)
@@ -395,9 +393,6 @@ model = keras.Model(img_input, output)
 model.summary()
 
 
-# In[ ]:
-
-
 # loss is constructed from params so the two can't drift apart
 # MLflow logs the params
 loss_fn = keras.losses.BinaryFocalCrossentropy(
@@ -408,15 +403,13 @@ loss_fn = keras.losses.BinaryFocalCrossentropy(
 
 model.compile(optimizer=keras.optimizers.Adam(params['learning_rate']), loss=loss_fn)
 
-# EarlyStopping: stop once val_loss stops improving for `patience` epochs and roll
-# back to the best weights - without restore_best_weights you keep the overfit ones.
-# CSVLogger writes each epoch as it finishes, so a crash keeps the curve
+# EarlyStopping: stop once val_losos stops improving for `patience` epochs
+# CSVLogger writes each epoch as it finishes - a crash keeps the curve
 os.makedirs('checkpoints', exist_ok=True)
 
 run_name = f"{params['model']}_{params['channels']}_{params['n_filters']}f_s{params['seed']}"
 
-# one file per run, overwritten each time val_loss improves - so it always holds the
-# best weights and evaluation loads it by name, with no epoch number to keep in sync
+# one file per run, overwritten each time val_loss improves - it always holds the best weights
 callbacks = [
     keras.callbacks.EarlyStopping(monitor='val_loss', patience=params['patience'], restore_best_weights=True, verbose=1, min_delta=1e-4),
     keras.callbacks.ModelCheckpoint(
@@ -426,14 +419,11 @@ callbacks = [
 ]
 
 
-# ## Training
+# Training
 
-# In[ ]:
+# MLflow tracks every training run — hiperparameters, metrics, and the model itself
+# mlflow ui for visualising
 
-
-# MLflow tracks every training run — hyperparameters, metrics, and the model itself
-# run `mlflow ui` in the terminal and localhost:5000
-# each run is logged separately to compare experiments side by side
 
 # [source]: https://mlflow.org/docs/latest/python_api/mlflow.keras.html
 # [example source]: https://github.com/mlflow/mlflow/blob/master/examples/keras/train.py
@@ -455,4 +445,3 @@ with mlflow.start_run(run_name=run_name) as run:
         mlflow.log_metric('val_loss', vl, step=epoch)
 
     mlflow.keras.log_model(model, 'model')
-
