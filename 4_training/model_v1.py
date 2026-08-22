@@ -108,7 +108,6 @@ class MemmapPatchSequence(keras.utils.PyDataset):
         for i in indices:
             self.by_file.setdefault(int(i // 1000), []).append(int(i % 1000))
 
-        self.cache = {}
         self.buildOrder()
 
     def buildOrder(self):
@@ -127,21 +126,6 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
         self.order = order
 
-    def loadFile(self, file_num):
-
-        if self.cache.get('file') == file_num:
-            return
-
-        # one sequential 1000-patch read, then served from RAM for the ~125 batches
-        # inside it. a seek per patch across 375 GB is what made a step 435 ms
-        lo = file_num * 1000
-        hi = lo + 1000
-
-        self.cache['wac'] = np.asarray(self.wac[lo:hi], np.float32)
-        self.cache['dem'] = np.asarray(self.dem[lo:hi], np.float32)
-        self.cache['mask'] = np.asarray(self.mask[lo:hi], np.float32)
-        self.cache['file'] = file_num
-
     def __len__(self):
         return len(self.order) // params['batch_size']
 
@@ -154,11 +138,11 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
         for j, (file_num, position) in enumerate(items):
 
-            self.loadFile(file_num)
+            patch_idx = file_num * 1000 + position
 
-            wac_patch = self.cache['wac'][position]
-            dem_patch = self.cache['dem'][position]
-            mask_patch = self.cache['mask'][position]
+            wac_patch = np.asarray(self.wac[patch_idx], np.float32)
+            dem_patch = np.asarray(self.dem[patch_idx], np.float32)
+            mask_patch = np.asarray(self.mask[patch_idx], np.float32)
 
             if self.augment_data:
                 wac_patch, dem_patch, mask_patch = augment(wac_patch, dem_patch, mask_patch, self.rng)
