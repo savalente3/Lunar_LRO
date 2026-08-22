@@ -73,6 +73,7 @@ params = {
     'seed': SEED,                        # same batch order + augmentation across all runs
     'patience': 3,                      # epochs without improvement before stopping
     'queue': 64,                        # batches buffered ahead of the GPU
+    'train_subsample': 250000,          # patches drawn from the train split. None = all
 }
 
 
@@ -80,9 +81,9 @@ params = {
 #
 # Streams from memory-mapped `.npy` arrays (`../training/convert_to_memmap.py`, run once - only its paths were changed). Replaces the old `.npz`-per-epoch reload.
 
-# patches are pre-normalised into memory-mapped .npy by ../training/convert_to_memmap.py
-# (only its paths changed). Same file/position ordering as before - the .npz load and the
-# per-patch percentileNormalise are what got removed, nothing else.
+# patches are read from memory-mapped .npy built once by ../training/convert_to_memmap.py
+# (only its paths changed). percentileNormalise still runs on every patch - it happens in
+# that conversion instead of on every epoch, so the loader must NOT normalise again.
 
 # one-off, takes hours. skipped on every later run once the three .npy files exist
 if not os.path.exists(os.path.join(PATCHES_DIR, 'wac_all.npy')):
@@ -163,6 +164,14 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
         if self.augment_data:
             self.buildOrder()
+
+
+# fewer patches per epoch. drawn across the whole split, so every tile stays
+# represented - neighbouring patches overlap heavily so the last 700k add little
+if params['train_subsample']:
+    train_idx = np.sort(np.random.default_rng(params['seed']).choice(
+        train_idx, params['train_subsample'], replace=False))
+    print(f'train subsampled to {len(train_idx)}')
 
 
 # workers=1 keeps one background loader - more threads would thrash the file cache.
