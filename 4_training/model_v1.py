@@ -74,6 +74,7 @@ params = {
     'patience': 3,                      # epochs without improvement before stopping
     'queue': 64,                        # batches buffered ahead of the GPU
     'train_subsample': 250000,          # patches drawn from the train split. None = all
+    'val_subsample': 25000,             # val is only a stopping monitor - full split doubles the epoch
 }
 
 
@@ -172,6 +173,11 @@ if params['train_subsample']:
     train_idx = np.sort(np.random.default_rng(params['seed']).choice(
         train_idx, params['train_subsample'], replace=False))
     print(f'train subsampled to {len(train_idx)}')
+
+if params['val_subsample']:
+    val_idx = np.sort(np.random.default_rng(params['seed']).choice(
+        val_idx, params['val_subsample'], replace=False))
+    print(f'val subsampled to {len(val_idx)}')
 
 
 # workers=1 keeps one background loader - more threads would thrash the file cache.
