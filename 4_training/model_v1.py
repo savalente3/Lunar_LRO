@@ -432,6 +432,9 @@ callbacks = [
 # [source]: https://mlflow.org/docs/latest/python_api/mlflow.keras.html
 # [example source]: https://github.com/mlflow/mlflow/blob/master/examples/keras/train.py
 
+# explicit, matching evaluation.ipynb - without it MLflow writes ./mlruns relative to
+# wherever the process was launched, which is how a second empty store appeared at the repo root
+mlflow.set_tracking_uri('mlruns')
 mlflow.set_experiment('lunar-crater-detection')
 
 with mlflow.start_run(run_name=run_name) as run:

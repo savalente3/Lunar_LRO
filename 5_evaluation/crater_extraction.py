@@ -153,16 +153,17 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
 # trained on. needs filtered_labels (every crater), not kept_labels (one row
 # per patch): a patch holds many craters, only one of which centred it.
 
-def truth_coords_for_patch(center_col, center_row, patch_lat, wac_col, wac_row, diameters):
+def truth_coords_for_patch(center_col, center_row, patch_lat, wac_col, wac_row, diameters, margin=0):
 
     cos_lat = np.cos(np.radians(patch_lat))
 
     # patch covers 128 px N-S but 128/cos(lat) px E-W in the original tile
-    half_col = 128 / cos_lat
+    # margin catches craters centred outside the patch whose rim still crosses it
+    half_col = 128 / cos_lat + margin
 
     in_patch = (
         (wac_col >= center_col - half_col) & (wac_col < center_col + half_col) &
-        (wac_row >= center_row - 128) & (wac_row < center_row + 128)
+        (wac_row >= center_row - 128 - margin) & (wac_row < center_row + 128 + margin)
     )
 
     if in_patch.sum() == 0:
@@ -197,3 +198,24 @@ def filter_edge_craters(coords, dim=256, cutrad=0.8):
     )
 
     return coords[np.where(inside == True)]
+
+
+# Detections on a catalogue crater bigger than the label cut - not model errors. notes 18.4
+
+def explained_by_large(detections, large_craters):
+
+    detections = np.asarray(detections)
+
+    if len(detections) == 0 or len(large_craters) == 0:
+        return np.zeros(len(detections), dtype=bool)
+
+    det_x, det_y, det_radius = detections.T
+    large_x, large_y, large_radius = np.asarray(large_craters).T
+
+    distance = np.sqrt((det_x[:, None] - large_x[None, :])**2 +
+                       (det_y[:, None] - large_y[None, :])**2)
+
+    concentric = distance <= det_radius[:, None]
+    on_rim = np.abs(distance - large_radius[None, :]) <= det_radius[:, None]
+
+    return (concentric | on_rim).any(axis=1)
