@@ -73,8 +73,7 @@ params = {
     'seed': SEED,                        # same batch order + augmentation across all runs
     'patience': 3,                      # epochs without improvement before stopping
     'queue': 64,                        # batches buffered ahead of the GPU
-    'train_subsample': 250000,          # patches drawn from the train split. None = all
-    'val_subsample': 25000,             # val is only a stopping monitor - full split doubles the epoch
+    'training_sample_percentage': 10,                # % of each split to use. None = the whole split
 }
 
 
@@ -168,16 +167,19 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
 
 # fewer patches per epoch. drawn across the whole split, so every tile stays
-# represented - neighbouring patches overlap heavily so the last 700k add little
-if params['train_subsample']:
-    train_idx = np.sort(np.random.default_rng(params['seed']).choice(
-        train_idx, params['train_subsample'], replace=False))
-    print(f'train subsampled to {len(train_idx)}')
+# represented - neighbouring patches overlap heavily so the rest add little
+if params['training_sample_percentage']:
+    n_train = int(len(train_idx) * params['training_sample_percentage'] / 100)
+    n_val = int(len(val_idx) * params['training_sample_percentage'] / 100)
 
-if params['val_subsample']:
-    val_idx = np.sort(np.random.default_rng(params['seed']).choice(
-        val_idx, params['val_subsample'], replace=False))
-    print(f'val subsampled to {len(val_idx)}')
+    train_idx = np.sort(np.random.default_rng(params['seed']).choice(train_idx, n_train, replace=False))
+    val_idx = np.sort(np.random.default_rng(params['seed']).choice(val_idx, n_val, replace=False))
+
+    # resolved counts go into params so MLflow records what was actually used
+    params['train_patches'] = n_train
+    params['val_patches'] = n_val
+
+    print(f"subsampled to {n_train} train / {n_val} val ({params['training_sample_percentage']}%)")
 
 
 # workers=1 keeps one background loader - more threads would thrash the file cache.
@@ -406,7 +408,10 @@ model.compile(optimizer=keras.optimizers.Adam(params['learning_rate']), loss=los
 # CSVLogger writes each epoch as it finishes - a crash keeps the curve
 os.makedirs('checkpoints', exist_ok=True)
 
-run_name = f"{params['model']}_{params['channels']}_{params['n_filters']}f_s{params['seed']}"
+# subsample size is in the name, so runs at different percentages keep separate checkpoints
+pct_tag = f"{params['training_sample_percentage']}pct" if params['training_sample_percentage'] else 'all'
+
+run_name = f"{params['model']}_{params['channels']}_{params['n_filters']}f_s{params['seed']}_{pct_tag}"
 
 # one file per run, overwritten each time val_loss improves - it always holds the best weights
 callbacks = [
