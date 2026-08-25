@@ -16,7 +16,7 @@ import mlflow.keras
 from keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Concatenate, Dropout
 from keras.regularizers import l2
 
-from LRO_data_class import getSplitIndices, getNormalisedBatch, percentileNormalise, augment
+from LRO_data_class import getSplitIndices, augment
 
 DATASET = 'alltiles'
 
@@ -30,13 +30,6 @@ print(tf.config.list_physical_devices('GPU'))
 
 train_idx, val_idx, test_idx = getSplitIndices(PATCHES_DIR)
 print(f'train: {len(train_idx)}  val: {len(val_idx)}  test: {len(test_idx)}')
-
-# sanity check on one file
-wac, dem, mask = getNormalisedBatch(batch_num=0, patches_dir=PATCHES_DIR)
-
-print(f'wac  {wac.shape}  {wac.dtype}   [{wac.min():.3f}, {wac.max():.3f}]')
-print(f'dem  {dem.shape}  {dem.dtype}   [{dem.min():.3f}, {dem.max():.3f}]')
-print(f'mask {mask.shape}  {mask.dtype}   crater pixels {mask.mean()*100:.2f}%')
 
 
 # Hyperparameters
@@ -96,7 +89,6 @@ class MemmapPatchSequence(keras.utils.PyDataset):
     def __init__(self, indices, patches_dir, seed, augment_data=True, **kwargs):
         super().__init__(**kwargs)
 
-        self.patches_dir = patches_dir
         self.augment_data = augment_data
         self.rng = np.random.default_rng(seed)
 
@@ -188,6 +180,11 @@ train_seq = MemmapPatchSequence(train_idx, PATCHES_DIR, params['seed'], augment_
 val_seq = MemmapPatchSequence(val_idx, PATCHES_DIR, params['seed'], augment_data=False)
 
 print(f'{len(train_seq)} train steps, {len(val_seq)} val steps per epoch')
+
+# one real batch, so the check covers exactly what the model is fed
+X, y = train_seq[0]
+print(f'X {X.shape} {X.dtype}  [{X.min():.3f}, {X.max():.3f}]')
+print(f'y {y.shape} {y.dtype}  crater pixels {y.mean()*100:.2f}%')
 
 
 # Model Architecture
