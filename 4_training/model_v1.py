@@ -74,11 +74,6 @@ params = {
 #
 # Streams from memory-mapped `.npy` arrays (`../training/convert_to_memmap.py`, run once - only its paths were changed). Replaces the old `.npz`-per-epoch reload.
 
-# patches are read from memory-mapped .npy built once by ../training/convert_to_memmap.py
-# (only its paths changed). percentileNormalise still runs on every patch - it happens in
-# that conversion instead of on every epoch, so the loader must NOT normalise again.
-
-# one-off, takes hours. skipped on every later run once the three .npy files exist
 if not os.path.exists(os.path.join(PATCHES_DIR, 'wac_all.npy')):
     print('memmaps not found - running convert_to_memmap.py first', flush=True)
     subprocess.run([sys.executable, 'convert_to_memmap.py'], cwd='../training', check=True)
