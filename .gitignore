@@ -4,5 +4,4 @@ patches/
 2_data_preparation/*.csv
 3_pre_processing/lunar_patches/
 3_pre_processing/lunar_patches_alltiles/
-4_training/checkpoints/
 __pycache__/
