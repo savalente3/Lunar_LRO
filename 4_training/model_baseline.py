@@ -1,7 +1,6 @@
 """
-Model V1 - proposed architecture.
+Baseline - DeepMoon's architecture (Silburt et al. 2019).
 
-4 levels, n_filters doubling 32 -> 512.
 """
 
 import keras
@@ -76,9 +75,9 @@ def buildModel(params):
 
     a3P = MaxPooling2D((2, 2), strides=(2, 2))(a3)
 
-    # Encoder4
-    a4 = Conv2D(
-        params['n_filters'] * 8,
+    # Connecting - stays at 448, no doubling. DeepMoon 2.3
+    u = Conv2D(
+        params['n_filters'] * 4,
         params['FL'],
         activation='relu',
         kernel_initializer=params['init'],
@@ -86,28 +85,8 @@ def buildModel(params):
         padding='same'
     )(a3P)
 
-    a4 = Conv2D(
-        params['n_filters'] * 8,
-        params['FL'],
-        activation='relu',
-        kernel_initializer=params['init'],
-        kernel_regularizer=l2(params['lmbda']),
-        padding='same'
-    )(a4)
-
-    a4P = MaxPooling2D((2, 2), strides=(2, 2))(a4)
-
     u = Conv2D(
-        params['n_filters'] * 16,
-        params['FL'],
-        activation='relu',
-        kernel_initializer=params['init'],
-        kernel_regularizer=l2(params['lmbda']),
-        padding='same'
-    )(a4P)
-
-    u = Conv2D(
-        params['n_filters'] * 16,
+        params['n_filters'] * 4,
         params['FL'],
         activation='relu',
         kernel_initializer=params['init'],
@@ -115,13 +94,13 @@ def buildModel(params):
         padding='same'
     )(u)
 
-    # Decoder1
-    d1CT = Conv2DTranspose(params['n_filters']*8, kernel_size=2, strides=2, padding='same')(u)
-    d1c = Concatenate()([d1CT, a4])
+    # Decoder1 - 224
+    d1CT = Conv2DTranspose(params['n_filters']*2, kernel_size=2, strides=2, padding='same')(u)
+    d1c = Concatenate()([d1CT, a3])
     x1 = Dropout(params['dropout'])(d1c)
 
     d1 = Conv2D(
-        params['n_filters'] * 8,
+        params['n_filters'] * 2,
         params['FL'],
         activation='relu',
         kernel_initializer=params['init'],
@@ -130,7 +109,7 @@ def buildModel(params):
     )(x1)
 
     d1 = Conv2D(
-        params['n_filters'] * 8,
+        params['n_filters'] * 2,
         params['FL'],
         activation='relu',
         kernel_initializer=params['init'],
@@ -138,13 +117,13 @@ def buildModel(params):
         padding='same'
     )(d1)
 
-    # Decoder2
-    d2CT = Conv2DTranspose(params['n_filters']*4, kernel_size=2, strides=2, padding='same')(d1)
-    d2c = Concatenate()([d2CT, a3])
+    # Decoder2 - 112
+    d2CT = Conv2DTranspose(params['n_filters'], kernel_size=2, strides=2, padding='same')(d1)
+    d2c = Concatenate()([d2CT, a2])
     x2 = Dropout(params['dropout'])(d2c)
 
     d2 = Conv2D(
-        params['n_filters'] * 4,
+        params['n_filters'],
         params['FL'],
         activation='relu',
         kernel_initializer=params['init'],
@@ -153,7 +132,7 @@ def buildModel(params):
     )(x2)
 
     d2 = Conv2D(
-        params['n_filters'] * 4,
+        params['n_filters'],
         params['FL'],
         activation='relu',
         kernel_initializer=params['init'],
@@ -161,13 +140,13 @@ def buildModel(params):
         padding='same'
     )(d2)
 
-    # Decoder3
-    d3CT = Conv2DTranspose(params['n_filters']*2, kernel_size=2, strides=2, padding='same')(d2)
-    d3c = Concatenate()([d3CT, a2])
+    # Decoder3 - 112, no reduction. DeepMoon 2.3
+    d3CT = Conv2DTranspose(params['n_filters'], kernel_size=2, strides=2, padding='same')(d2)
+    d3c = Concatenate()([d3CT, a1])
     x3 = Dropout(params['dropout'])(d3c)
 
     d3 = Conv2D(
-        params['n_filters'] * 2,
+        params['n_filters'],
         params['FL'],
         activation='relu',
         kernel_initializer=params['init'],
@@ -176,7 +155,7 @@ def buildModel(params):
     )(x3)
 
     d3 = Conv2D(
-        params['n_filters'] * 2,
+        params['n_filters'],
         params['FL'],
         activation='relu',
         kernel_initializer=params['init'],
@@ -184,30 +163,7 @@ def buildModel(params):
         padding='same'
     )(d3)
 
-    # Decoder4
-    d4CT = Conv2DTranspose(params['n_filters'], kernel_size=2, strides=2, padding='same')(d3)
-    d4c = Concatenate()([d4CT, a1])
-    x4 = Dropout(params['dropout'])(d4c)
-
-    d4 = Conv2D(
-        params['n_filters'],
-        params['FL'],
-        activation='relu',
-        kernel_initializer=params['init'],
-        kernel_regularizer=l2(params['lmbda']),
-        padding='same'
-    )(x4)
-
-    d4 = Conv2D(
-        params['n_filters'],
-        params['FL'],
-        activation='relu',
-        kernel_initializer=params['init'],
-        kernel_regularizer=l2(params['lmbda']),
-        padding='same'
-    )(d4)
-
     # Output layer
-    output = Conv2D(1, 1, activation='sigmoid')(d4)
+    output = Conv2D(1, 1, activation='sigmoid')(d3)
 
-    return keras.Model(img_input, output, name='U-Net-v1')
+    return keras.Model(img_input, output, name='DeepMoon-baseline')

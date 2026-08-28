@@ -6,6 +6,7 @@ import kagglehub
 from kagglehub import KaggleDatasetAdapter
 import pandas as pd
 import numpy as np
+from skimage.draw import circle_perimeter
 
 
 class LunarDataset:
@@ -33,18 +34,8 @@ class LunarDataset:
     def loadFilteredLabels(self):
         self.mergedData = getFilteredLabels()
 
-    def getNormalisedBatch(self, batch_num, **kwargs):
-        return getNormalisedBatch(batch_num, **kwargs)
-
-    def getAugmentedBatch(self, batch_num, **kwargs):
-        return getAugmentedBatch(batch_num, **kwargs)
-
-    def patchGenerator(self, indices, **kwargs):
-        return patchGenerator(indices, **kwargs)
-
-    @staticmethod
-    def augment(wac, dem, mask, rng=None):
-        return augment(wac, dem, mask, rng)
+    def rebuildMasks(self, patches_dir, **kwargs):
+        return rebuildMasks(patches_dir, catalogue=self.labels, **kwargs)
 
     def saveFiles(self, output_dir="data"):
         os.makedirs(output_dir, exist_ok=True)
@@ -131,11 +122,135 @@ def percentileNormalise(patch, low=1, high=99):
     return (np.clip(patch, p_low, p_high) - p_low) / (p_high - p_low + 1e-8)
 
 
+def maskGeneration(patch_wac_col, patch_wac_row, wac_col, wac_row, diameters, cos_lat):
+    """Ring mask for one patch - every catalogue crater whose centre falls inside it.
+
+    wac_col / wac_row / diameters run over the same crater set, in tile pixel
+    coordinates. Rings (1 px rim), not filled disks - they stay distinct when
+    craters overlap (Silburt et al. 2019).
+    """
+    wac_col = np.asarray(wac_col)
+    wac_row = np.asarray(wac_row)
+    diameters = np.asarray(diameters)
+
+    mask = np.zeros((256, 256), dtype=np.uint8)
+
+    # patch covers 128 px N-S but 128/cos(lat) px E-W in the original tile
+    half_col = 128 / cos_lat
+
+    in_patch = (
+        (wac_col >= patch_wac_col - half_col) & (wac_col < patch_wac_col + half_col) &
+        (wac_row >= patch_wac_row - 128) & (wac_row < patch_wac_row + 128)
+    )
+
+    for i in np.where(in_patch)[0]:
+
+        # column offsest shrink by cos(lat) when the wide window resizes
+        rel_col = int(128 + (wac_col[i] - patch_wac_col) * cos_lat)
+        rel_row = int(128 + (wac_row[i] - patch_wac_row))
+        radius = int((diameters[i] / 2) / 0.1)
+
+        if radius < 1:
+            continue
+
+        rr, cc = circle_perimeter(rel_row, rel_col, radius, shape=(256, 256))
+        mask[rr, cc] = 1
+
+    return mask
+
+
+def fitTileMap(kept_labels, tile_name, catalogue, margin=2.0):
+    """lon/lat -> tile pixel coords, fitted from the craters kept_labels already carries.
+
+    Each tile counts pixels from its own corner, so the map is fitted per tile rather than
+    hardcoded. Returns (wac_col, wac_row, diameters) for the catalogue craters near it -
+    anything further than `margin` degrees out cannot reach a patch.
+    """
+    rows = kept_labels[kept_labels['tile'] == tile_name].dropna(subset=['LON_CIRC_IMG', 'wac_col'])
+
+    col_map = np.polyfit(rows['LON_CIRC_IMG'], rows['wac_col'], 1)
+    row_map = np.polyfit(rows['LAT_CIRC_IMG'], rows['wac_row'], 1)
+
+    near = catalogue[
+        catalogue['LON_CIRC_IMG'].between(
+            rows['LON_CIRC_IMG'].min() - margin,
+            rows['LON_CIRC_IMG'].max() + margin
+        ) &
+        catalogue['LAT_CIRC_IMG'].between(
+            rows['LAT_CIRC_IMG'].min() - margin,
+            rows['LAT_CIRC_IMG'].max() + margin
+        )
+    ]
+
+    return (
+        np.polyval(col_map, near['LON_CIRC_IMG'].values),
+        np.polyval(row_map, near['LAT_CIRC_IMG'].values),
+        near['DIAM_CIRC_IMG'].values
+    )
+
+
+def rebuildMasks(patches_dir, catalogue=None, arc_min=0.5, max_diameter=None, file_size=1000, verbose=True):
+    """Redraw every mask in a patches directory from catalogue.
+
+    catalogue    : Robbins dataframe. None -> loaded here
+    arc_min      : ARC_IMG, the same filter the patches were built with
+
+    Rewrites X_mask_{n}.npz and mask_all.npy in place. Returns the rim-pixel fraction.
+    """
+    kept = pd.read_csv(os.path.join(patches_dir, 'kept_labels.csv'), low_memory=False)
+
+    if catalogue is None:
+        catalogue = getLunarRobbinsLabels()
+
+    catalogue = catalogue[catalogue['ARC_IMG'] > arc_min]
+
+    if max_diameter is not None:
+        catalogue = catalogue[catalogue['DIAM_CIRC_IMG'] < max_diameter]
+
+    if verbose:
+        cut = 'no size cut' if max_diameter is None else f'DIAM < {max_diameter} km'
+        print(f'{len(kept)} patches, {len(catalogue)} catalogue craters ({cut})', flush=True)
+
+    tile_map = {}
+
+    for tile in kept['tile'].dropna().unique():
+        tile_map[tile] = fitTileMap(kept, tile, catalogue)
+
+    mask_all = np.lib.format.open_memmap(os.path.join(patches_dir, 'mask_all.npy'), mode='w+', dtype=np.uint8, shape=(len(kept), 256, 256))
+
+    n_files = (len(kept) + file_size - 1) // file_size
+    positives = 0
+
+    for f in range(n_files):
+
+        block = kept.iloc[f * file_size:(f + 1) * file_size]
+        masks = np.zeros((len(block), 256, 256), dtype=np.uint8)
+
+        for j, (_, row) in enumerate(block.iterrows()):
+            wac_col, wac_row, diameters = tile_map[row['tile']]
+            cos_lat = np.cos(np.radians(row['patch_lat']))
+
+            masks[j] = maskGeneration(row['center_col'], row['center_row'], wac_col, wac_row, diameters, cos_lat)
+
+        positives += int(masks.sum())
+
+        np.savez_compressed(os.path.join(patches_dir, f'X_mask_{f}'), masks)
+        mask_all[f * file_size:f * file_size + len(block)] = masks
+
+        if verbose:
+            print(f'  {f + 1}/{n_files} files', flush=True)
+
+    mask_all.flush()
+
+    fraction = positives / (len(kept) * 256 * 256)
+
+    if verbose:
+        print(f'rim pixels {positives:,} ({fraction * 100:.2f}%)')
+
+    return fraction
+
+
 def getNormalisedBatch(batch_num, patches_dir='../3_pre_processing/lunar_patches'):
-    if not os.path.exists(os.path.join(patches_dir, f'X_wac_{batch_num}.npz')):
-        raise FileNotFoundError(
-            f'batch {batch_num} not found in {patches_dir} '
-            f'(valid range 0-211; paths are relative to the notebook directory)')
 
     wac  = np.load(os.path.join(patches_dir, f'X_wac_{batch_num}.npz'))['arr_0']
     dem  = np.load(os.path.join(patches_dir, f'X_dem_{batch_num}.npz'))['arr_0']
@@ -166,28 +281,19 @@ def getAugmentedBatch(batch_num, patches_dir='../3_pre_processing/lunar_patches'
 
 
 def stepsPerEpoch(indices, batch_size=8):
-    """Number of training batches in one pass over `indices`."""
     return len(indices) // batch_size
 
 
-def patchGenerator(indices, batch_size=8, channels='both', augment_data=True,
-                   patches_dir='../3_pre_processing/lunar_patches', rng=None,
-                   file_size=1000):
-    """Yield (X, y) training batches from the .npz patch files, forever.
+def patchGenerator(indices, batch_size=8, channels='both', augment_data=True, patches_dir='../3_pre_processing/lunar_patches', rng=None, file_size=1000):
+    """
 
-    Patches are stored 1000 per file, so global patch index i lives at
-    position i % file_size in file i // file_size. This walks the files in a
-    shuffled order, shuffles the wanted positions inside each one, and emits
-    fixed-size batches - so consecutive batches are not all the same terrain.
 
     channels: 'both' -> X (B,256,256,2) [wac, dem]   <- fusion model
               'wac'  -> X (B,256,256,1)              <- ablation
               'dem'  -> X (B,256,256,1)              <- baseline
     y is always (B,256,256,1) float32.
 
-    Infinite by design: Keras fit() pulls batches until steps_per_epoch is hit,
-    so pass steps_per_epoch=stepsPerEpoch(indices, batch_size).
-    Set augment_data=False for validation and test.
+
     """
     if channels not in ('both', 'wac', 'dem'):
         raise ValueError(f"channels must be 'both', 'wac' or 'dem', got {channels!r}")
@@ -195,7 +301,7 @@ def patchGenerator(indices, batch_size=8, channels='both', augment_data=True,
     if rng is None:
         rng = np.random
 
-    # group global indices by the file they live in
+    # group global indices by file
     by_file = {}
     for idx in indices:
         by_file.setdefault(idx // file_size, []).append(idx % file_size)

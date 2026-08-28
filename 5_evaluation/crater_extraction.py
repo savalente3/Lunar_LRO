@@ -94,9 +94,10 @@ def filter_to_detectable(coords, minrad=5, maxrad=50):
 # Matches detections against ground truth.
 # returns full pairs (det x,y,r then truth x,y,r) -> diameter bins, error plots
 # detections that matched nothing -> false positive inspection
-# multi_match_count -> how often one detection claimed several truth craters.
-# DeepMoon tracks the same thing as frac_dupes. non-zero means the radius-relative
-# tolerance is binding too loosely in dense fields - see CONCEPT_Evaluation.md
+# multi_match_count -> how often one detection fell within tolerance of several truth
+# craters. DeepMoon tracks the same thing as frac_dupes. it is a diagnostic of how
+# tightly craters cluster relative to their own radius, not a loss - only the paired
+# crater is removed, so the rest stay matchable - see CONCEPT_Evaluation.md
 
 def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh=1.0):
 
@@ -128,30 +129,27 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
         is_match = (radius_ratio < rad_thresh) & (dist_ratio < longlat_thresh)
 
         if is_match.sum() > 0:
-            # first match in array order, as DeepMoon does - not the closest
-            hit = remaining_truth[np.where(is_match == True)][0]
+            # closest match, not the first in array order
+            candidates = np.where(is_match)[0]
+            best = candidates[np.argmin(dist_ratio[candidates])]
+
+            hit = remaining_truth[best]
             matched_pairs.append([det_x, det_y, det_radius, hit[0], hit[1], hit[2]])
 
-            # one detection claimed several truth craters - the others are lost
+            # one detection fell within tolerance of several truth craters
             if is_match.sum() > 1:
                 multi_match_count += 1
+
+            remaining_truth = np.delete(remaining_truth, best, axis=0)
         else:
             false_positives.append([det_x, det_y, det_radius])
 
         match_count += min(1, is_match.sum())
 
-        # a matched truth crater cannot be claimed twice. one detection matching
-        # several drops them all but scores 1 - deflates recall, DeepMoon does the
-        # same so the baseline carries it too. multi_match_count is the size of it
-        remaining_truth = remaining_truth[np.where(is_match == False)]
-
-    return match_count, detection_count, truth_count, np.asarray(matched_pairs), np.asarray(false_positives), multi_match_count
+    return (match_count, detection_count, truth_count, np.asarray(matched_pairs), np.asarray(false_positives), multi_match_count)
 
 
 # Robbins craters inside one patch, in patch pixel coords.
-# same transform as maskGeneration - so the truth matches the mask the model
-# trained on. needs filtered_labels (every crater), not kept_labels (one row
-# per patch): a patch holds many craters, only one of which centred it.
 
 def truth_coords_for_patch(center_col, center_row, patch_lat, wac_col, wac_row, diameters, margin=0):
 
@@ -177,12 +175,6 @@ def truth_coords_for_patch(center_col, center_row, patch_lat, wac_col, wac_row, 
     return np.column_stack([rel_col, rel_row, radius])
 
 
-# Drops craters too close to the patch edge to appear as a full ring.
-# a crater centred inside the patch can still have most of its rim outside -
-# maskGeneration clips the ring, template matching cannot recover an arc, so it
-# is a guaranteed miss and deflates recall.
-# cutrad=0.8 is DeepMoon's value (get_metrics in model_train.py)
-
 def filter_edge_craters(coords, dim=256, cutrad=0.8):
 
     coords = np.asarray(coords)
@@ -200,9 +192,10 @@ def filter_edge_craters(coords, dim=256, cutrad=0.8):
     return coords[np.where(inside == True)]
 
 
-# Detections on a catalogue crater bigger than the label cut - not model errors. notes 18.4
+# A detection sitting on a catalogue crater excluded by the < 10 km label cut.
+# The crater is real, it just has no label, so the detection is not a model error. notes 18.4
 
-def explained_by_large(detections, large_craters):
+def matchesExcludedCrater(detections, large_craters):
 
     detections = np.asarray(detections)
 
