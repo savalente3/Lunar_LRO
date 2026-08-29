@@ -10,7 +10,7 @@ import keras
 
 from LRO_data_class import augment
 
-
+# [source]: N. Khedkar (project partner) - Lunar_LRO/training/convert_to_memmap.py
 class MemmapPatchSequence(keras.utils.PyDataset):
 
     def __init__(self, indices, patches_dir, params, augment_data=True, **kwargs):

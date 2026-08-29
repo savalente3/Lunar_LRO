@@ -15,14 +15,12 @@ Lunar_LRO/
 │   └── data_merge_alltiles.ipynb      # Same, widened to all 8 WAC tiles (full 60°S–60°N band)
 ├── 3_pre_processing/
 │   ├── data_pre_processing.ipynb            # Patch extraction + mask generation — single tile
-│   ├── data_pre_processing.py               # Script export of the notebook above
-│   ├── data_pre_processing_alltiles.ipynb   # Same, looped over all 8 tiles
-│   ├── data_pre_processing_alltiles.py      # Script export of the notebook above
-│   ├── make_labels.py                       # Fast regeneration of filtered_labels.csv, no raster downloads
-│   └── run_preprocessing.py                 # Headless single-tile patch extraction for background runs (logs to log_prep.txt)
+│   └── data_pre_processing_alltiles.ipynb   # Same, looped over all 8 tiles - the live pipeline
 ├── 4_training/
-│   ├── model_v1.ipynb                 # Model training and MLflow logging (evaluation moved to 5_evaluation/evaluation.ipynb)
-│   ├── model_v1.py                    # Script export of the notebook above
+│   ├── train.ipynb                    # Trains one cell of the grid (architecture x channels), MLflow logging
+│   ├── model_v1.py                    # Proposed architecture - 4 levels, 32 -> 512, uncompiled builder
+│   ├── model_baseline.py              # DeepMoon architecture - 3 levels, 112/224/448, uncompiled builder
+│   ├── patch_sequence.py              # Keras PyDataset streaming patches from the memmaps
 │   ├── benchmark.py                   # One-off benchmark of GPU vs data-loader time per training step
 │   └── checkpoints/                   # Saved model weights per training run (gitignored)
 ├── 5_evaluation/
@@ -121,7 +119,7 @@ data = np.frombuffer(response.content, dtype=np.float32).reshape(15360, 46080)
 
 ## 4. WAC Optical Imagery
 
-WAC optical imagery is used for visualisation, and as the second input channel in the default multi-modal model (`4_training/model_v1.ipynb`, `channels='both'`), fused with the DEM. WAC is illumination-dependent — crater appearance changes with sun angle — which is why a DEM-only configuration (`channels='dem'`) is also kept as an illumination-invariant baseline for comparison.
+WAC optical imagery is used for visualisation, and as the second input channel in the default multi-modal model (`4_training/train.ipynb`, `channels='both'`), fused with the DEM. WAC is illumination-dependent — crater appearance changes with sun angle — which is why a DEM-only configuration (`channels='dem'`) is also kept as an illumination-invariant baseline for comparison.
 
 WAC tiles are loaded in-memory from the LROC PDS server — no API key required:
 
@@ -160,4 +158,4 @@ MLflow logs hyperparameters and results for every training run. To view results:
 mlflow ui
 ```
 
-Then open `localhost:5000` in the browser. Training runs are logged in `4_training/model_v1.ipynb`.
+Then open `localhost:5000` in the browser. Training runs are logged in `4_training/train.ipynb`.
