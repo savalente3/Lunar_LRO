@@ -1,0 +1,15 @@
+2026-08-29 07:48:35.310286: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:479] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2026-08-29 07:48:35.328142: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:10575] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2026-08-29 07:48:35.328174: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1442] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2026-08-29 07:48:35.339568: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-08-29 07:48:36.162377: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+[PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
+train: 982147  val: 123649  test: 116033
+memmaps not found - running convert_to_memmap.py first
+1226971 patches across 1227 batches
+  10/1227 batches (10000 patches)
+  20/1227 batches (20000 patches)
+  30/1227 batches (30000 patches)
+  40/1227 batches (40000 patches)
+  50/1227 batches (50000 patches)
