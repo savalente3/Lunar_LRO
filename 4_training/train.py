@@ -52,8 +52,8 @@ keras.utils.set_random_seed(SEED)
 params = {
     'dataset': DATASET,
     'dim': 256,
-    'channels': 'both',                 # 'both' | 'wac' | 'dem'
-    'input_channels': 2,                # 2 for both, 1 for ablations
+    'channels': 'wac',                 # 'both' | 'wac' | 'dem'
+    'input_channels': 1,                # 2 for both, 1 for ablations
     'n_filters': 32,                    # v1's n filters -> baseline overrides this
     'FL': 3,                            # kernel size
     'init': 'he_normal',
