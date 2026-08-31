@@ -1,5 +1,5 @@
 artifact_uri: /home/ppxsv1/Lunar_LRO/4_training/mlruns/544155005887079384/2eb3450fffd64c459d21412c595da5d2/artifacts
-end_time: null
+end_time: 1788137067158
 entry_point_name: ''
 experiment_id: '544155005887079384'
 lifecycle_stage: active
@@ -10,6 +10,6 @@ source_name: ''
 source_type: 4
 source_version: ''
 start_time: 1788075901595
-status: 1
+status: 3
 tags: []
 user_id: ppxsv1
