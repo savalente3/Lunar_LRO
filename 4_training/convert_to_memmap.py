@@ -29,8 +29,13 @@ import glob
 import numpy as np
 
 
-PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
-OUT_DIR = '../3_pre_processing/lunar_patches_alltiles'   # same dir; big files, 1.4 TB is fine
+import sys
+sys.path.append('../1_data_extraction')
+from LRO_data_class import patchesDirName
+
+# resolution-tagged: the memmaps live beside the patches they were built from
+PATCHES_DIR = os.path.join('../3_pre_processing', patchesDirName('alltiles'))
+OUT_DIR = PATCHES_DIR                    # same dir; big files, 1.4 TB is fine
 FILE_SIZE = 1000                         # patches per .npz batch
 
 

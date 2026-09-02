@@ -4,4 +4,5 @@ patches/
 2_data_preparation/*.csv
 3_pre_processing/lunar_patches/
 __pycache__/
-3_pre_processing/lunar_patches_alltiles/
+3_pre_processing/lunar_patches_alltiles/3_pre_processing/lunar_patches_alltiles_*ppd/
+3_pre_processing/lunar_patches_*ppd/

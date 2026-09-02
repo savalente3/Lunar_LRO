@@ -21,6 +21,32 @@ DEM_BASE_URL = 'http://imbrium.mit.edu/DATA/SLDEM2015/GLOBAL/FLOAT_IMG'
 WAC_BASE_URL = 'https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_GLOBAL'
 
 
+# 128 ppd is the baseline: its patches, checkpoints and results keep the original
+# unsuffixed names, so everything produced before this existed stays valid. Any
+# other resolution gets its own names throughout the pipeline - a 256 ppd run must
+# not overwrite the 128 ppd patch set, checkpoints or metrics, and the collision
+# would be silent.
+BASELINE_PPD = 128
+
+
+def resolutionTag(ppd=None):
+    """Suffix marking which DEM resolution an artefact belongs to ('' at 128 ppd)."""
+    ppd = DEM_PPD if ppd is None else ppd
+
+    return '' if ppd == BASELINE_PPD else f'_{ppd}ppd'
+
+
+def patchesDirName(dataset='alltiles', ppd=None):
+    """Patch directory for one dataset at one DEM resolution.
+
+    Derived rather than written out in each notebook, so the pre-processing,
+    memmap, training and evaluation steps cannot drift onto different directories.
+    """
+    base = 'lunar_patches' if dataset == 'single' else 'lunar_patches_alltiles'
+
+    return f'{base}{resolutionTag(ppd)}'
+
+
 class LunarDataset:
  
     def __init__(self):

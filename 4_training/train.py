@@ -20,15 +20,14 @@ import keras
 import tensorflow as tf
 
 import mlflow.keras
-from LRO_data_class import getSplitIndices
+from LRO_data_class import getSplitIndices, patchesDirName, resolutionTag
 from LRO_meemmap_class import MemmapPatchSequence
 
 DATASET = 'alltiles'
 
-if DATASET == 'single':
-    PATCHES_DIR = '../3_pre_processing/lunar_patches'
-else:
-    PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
+# resolution-tagged, so a 256 ppd run reads its own patches and cannot silently
+# train on (or overwrite) the 128 ppd set
+PATCHES_DIR = os.path.join('../3_pre_processing', patchesDirName(DATASET))
 
 print(tf.config.list_physical_devices('GPU'))
 
@@ -176,7 +175,7 @@ if params['training_sample_percentage']:
     sample_tag = f"{params['training_sample_percentage']}pct"
 else:
     sample_tag = 'all'
-run_name = f"{params['model']}_{params['channels']}_{params['n_filters']}f_s{params['seed']}_{sample_tag}"
+run_name = f"{params['model']}_{params['channels']}_{params['n_filters']}f_s{params['seed']}_{sample_tag}{resolutionTag()}"
 
 # Always holds the best weights
 callbacks = [
