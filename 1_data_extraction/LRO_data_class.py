@@ -9,6 +9,18 @@ import numpy as np
 from skimage.draw import circle_perimeter
 
 
+# SLDEM2015 resolution, pixels per degree.
+#   128 ppd -> 237 m/px  (2.8 GB global product)
+#   256 ppd -> 118 m/px  (11.3 GB), the resolution DeepMoon used
+# Changing this changes the DEM crop arithmetic in the pre-processing notebook,
+# so regenerate the patches after touching it.
+DEM_PPD = 128
+
+DEM_BASE_URL = 'http://imbrium.mit.edu/DATA/SLDEM2015/GLOBAL/FLOAT_IMG'
+
+WAC_BASE_URL = 'https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_GLOBAL'
+
+
 class LunarDataset:
  
     def __init__(self):
@@ -44,13 +56,53 @@ class LunarDataset:
         self.labels.to_csv(os.path.join(output_dir, "LunarLabels.csv"))
  
  
-def getRegionalLunarData(tile='WAC_GLOBAL_E300N1350_100M'):
-    url = f'https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_GLOBAL/{tile}.IMG'
-    
-    response = requests.get(url)
-    
-    with rasterio.open(io.BytesIO(response.content)) as src:
-         data = src.read(1)
+def getRegionalLunarData(tile='WAC_GLOBAL_E300N1350_100M', cache_dir=None, force=False):
+    """One WAC 100 m/px global tile, cached on disk.
+
+    Each tile is ~2 GB. The same eight tiles are used by every run - the DEM
+    resolution changes between experiments but the optical mosaic does not - so
+    they are streamed to disk once and re-read from there, rather than pulled
+    over the network into memory on each pass.
+    """
+    if cache_dir is None:
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+
+    os.makedirs(cache_dir, exist_ok=True)
+
+    path = os.path.join(cache_dir, f'{tile}.IMG')
+
+    if force and os.path.exists(path):
+        os.remove(path)
+
+    if not os.path.exists(path):
+        url = f'{WAC_BASE_URL}/{tile}.IMG'
+        print(f'downloading {tile}.IMG -> {path}', flush=True)
+
+        partial = path + '.part'
+
+        with requests.get(url, allow_redirects=True, stream=True, timeout=60) as response:
+            response.raise_for_status()
+
+            total = int(response.headers.get('content-length', 0))
+
+            with open(partial, 'wb') as handle:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8 << 20):
+                    handle.write(chunk)
+                    downloaded += len(chunk)
+                    print(f'  {downloaded / 1e9:6.2f} / {total / 1e9:.2f} GB', end='\r', flush=True)
+
+        print()
+
+        # a truncated tile would reach rasterio as a valid but short raster
+        if total and os.path.getsize(partial) != total:
+            os.remove(partial)
+            raise IOError(f'{tile}.IMG truncated: expected {total:,} bytes')
+
+        os.replace(partial, path)
+
+    with rasterio.open(path) as src:
+        data = src.read(1)
 
     return data
  
@@ -62,14 +114,82 @@ def getLunarRobbinsLabels(file_path="lunar_crater_database_robbins_2018.csv"):
         file_path,
     ))
 
-def getDEMLunarData():
-    # Raw binary float array — no format header, rasterio cannot detect it. 
-    url = 'http://imbrium.mit.edu/DATA/SLDEM2015/GLOBAL/FLOAT_IMG/SLDEM2015_128_60S_60N_000_360_FLOAT.IMG'
-    
-    response = requests.get(url, allow_redirects=True)
-    data = np.frombuffer(response.content, dtype=np.float32).reshape(15360, 46080)
+def demShape(ppd=None):
+    """(rows, cols) of the SLDEM2015 global product at `ppd` pixels per degree.
 
-    return data
+    The product spans 60S-60N (120 deg of latitude) and 0-360E, so the shape is
+    just the degree span times the resolution: 128 ppd -> (15360, 46080),
+    256 ppd -> (30720, 92160).
+    """
+    ppd = DEM_PPD if ppd is None else ppd
+
+    return (120 * ppd, 360 * ppd)
+
+
+def getDEMLunarData(ppd=None, cache_dir=None, force=False):
+    """SLDEM2015 elevation, memory-mapped from a local cache.
+
+    Raw binary float array - no format header, rasterio cannot detect it, so the
+    shape comes from `ppd` rather than from the file.
+
+    The array is 2.8 GB at 128 ppd and 11.3 GB at 256 ppd, so it is streamed to
+    disk once and then memory-mapped: the caller slices it like an ordinary array
+    but only the touched pages are read. Pulling it through requests into RAM (as
+    this did before) needs the whole product resident twice over.
+
+    ppd       : pixels per degree, 128 (237 m/px) or 256 (118 m/px).
+                None -> the DEM_PPD module constant.
+    cache_dir : where the .IMG lives. None -> data/ beside this module.
+    force     : re-download even when a correctly sized cache file exists.
+    """
+    ppd = DEM_PPD if ppd is None else ppd
+    shape = demShape(ppd)
+
+    expected_bytes = shape[0] * shape[1] * np.dtype(np.float32).itemsize
+
+    if cache_dir is None:
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+
+    os.makedirs(cache_dir, exist_ok=True)
+
+    filename = f'SLDEM2015_{ppd}_60S_60N_000_360_FLOAT.IMG'
+    path = os.path.join(cache_dir, filename)
+
+    if force and os.path.exists(path):
+        os.remove(path)
+
+    if not os.path.exists(path):
+        url = f'{DEM_BASE_URL}/{filename}'
+        print(f'downloading {filename} ({expected_bytes / 1e9:.2f} GB) -> {path}', flush=True)
+
+        # streamed to a .part file so an interrupted download is never mistaken
+        # for a complete one on the next run
+        partial = path + '.part'
+
+        with requests.get(url, allow_redirects=True, stream=True, timeout=60) as response:
+            response.raise_for_status()
+
+            with open(partial, 'wb') as handle:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8 << 20):
+                    handle.write(chunk)
+                    downloaded += len(chunk)
+                    print(f'  {downloaded / 1e9:6.2f} / {expected_bytes / 1e9:.2f} GB', end='\r', flush=True)
+
+        print()
+        os.replace(partial, path)
+
+    # A truncated download, or the wrong ppd for the file on disk, would otherwise
+    # reshape into silently wrong elevations - every patch corrupted, no error raised.
+    actual_bytes = os.path.getsize(path)
+
+    if actual_bytes != expected_bytes:
+        raise ValueError(
+            f'{path} is {actual_bytes:,} bytes, expected {expected_bytes:,} for '
+            f'{ppd} ppd {shape}. Delete it and re-run, or check DEM_PPD matches the file.'
+        )
+
+    return np.memmap(path, dtype=np.float32, mode='r', shape=shape)
  
  
 def getFilteredLabels(path='../2_data_preparation/filtered_labels.csv'):
