@@ -13,7 +13,6 @@ sys.path.append('../1_data_extraction')
 
 import os
 import json
-import subprocess
 import numpy as np
 import mlflow
 import keras
@@ -21,7 +20,7 @@ import tensorflow as tf
 
 import mlflow.keras
 from LRO_data_class import getSplitIndices, patchesDirName, resolutionTag
-from LRO_meemmap_class import MemmapPatchSequence
+from LRO_meemmap_class import MemmapPatchSequence, buildMemmaps, memmapsExist
 
 DATASET = 'alltiles'
 
@@ -83,16 +82,15 @@ if params['model'] == 'DeepMoon-baseline':
 
 # ## Data
 # 
-# Streams from memory-mapped `.npy` arrays (`../training/convert_to_memmap.py`, run once - only its paths were changed). Replaces the old `.npz`-per-epoch reload.
+# Streams from memory-mapped `.npy` arrays (built by `LRO_meemmap_class.buildMemmaps`, run once). Replaces the old `.npz`-per-epoch reload.
 
 # In[ ]:
 
 
-if not os.path.exists(os.path.join(PATCHES_DIR, 'wac_all.npy')):
-    print('memmaps not found - running convert_to_memmap.py first', flush=True)
-    # TODO when organizing: needs relinking to filename - convert_to_memmap.py is the collaborator's
-    # file and lives in training/, outside this pipeline's 1_ .. 5_ numbering. PLAN.md Phase 8
-    subprocess.run([sys.executable, 'convert_to_memmap.py'], cwd='../training', check=True)
+# built in-process by the memmap module, so training depends on no external script
+if not memmapsExist(PATCHES_DIR):
+    print('memmaps not found - building them first', flush=True)
+    buildMemmaps(PATCHES_DIR)
 
 
 # fewer patches per epoch. drawn across the whole split, so every tile stays
