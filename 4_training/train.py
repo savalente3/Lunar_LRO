@@ -46,13 +46,20 @@ print(f'train: {len(train_idx)}  val: {len(val_idx)}  test: {len(test_idx)}')
 
 SEED = 42
 
+# TRAIN_CHANNELS lets one command run each channel in turn without editing this file;
+# input_channels is derived from it below so the two can never disagree
+CHANNELS = os.environ.get('TRAIN_CHANNELS', 'dem')
+
+if CHANNELS not in ('both', 'wac', 'dem'):
+    raise ValueError(f"TRAIN_CHANNELS must be 'both', 'wac' or 'dem', got {CHANNELS!r}")
+
 keras.utils.set_random_seed(SEED)
 
 params = {
     'dataset': DATASET,
     'dim': 256,
-    'channels': 'dem',                 # 'both' | 'wac' | 'dem'
-    'input_channels': 1,                # 2 for both, 1 for ablations
+    'channels': CHANNELS,               # 'both' | 'wac' | 'dem'
+    'input_channels': 2 if CHANNELS == 'both' else 1,   # derived: mismatch here silently breaks the run
     'n_filters': 32,                    # v1's n filters -> baseline overrides this
     'FL': 3,                            # kernel size
     'init': 'he_normal',
