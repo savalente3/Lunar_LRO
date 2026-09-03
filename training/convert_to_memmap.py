@@ -24,13 +24,21 @@ Out: <PATCHES_DIR>/dem_all.npy, wac_all.npy, mask_all.npy, meta.json
 """
 
 import os
+import sys
 import json
 import glob
 import numpy as np
 
 
-PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
-OUT_DIR = '../3_pre_processing/lunar_patches_alltiles'   # same dir; big files, 1.4 TB is fine
+# Derived from DEM_PPD rather than hardcoded, so this follows the resolution the
+# rest of the pipeline is set to (128 ppd -> lunar_patches_alltiles, 256 ppd ->
+# lunar_patches_alltiles_256ppd). Hardcoding it built 128 ppd memmaps for a 256 ppd
+# training run, which then failed looking for them in the tagged directory.
+sys.path.append('../1_data_extraction')
+from LRO_data_class import patchesDirName
+
+PATCHES_DIR = os.path.join('../3_pre_processing', patchesDirName('alltiles'))
+OUT_DIR = PATCHES_DIR                                    # same dir; big files, 1.4 TB is fine
 FILE_SIZE = 1000                         # patches per .npz batch
 
 

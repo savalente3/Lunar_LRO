@@ -14,7 +14,7 @@ from skimage.draw import circle_perimeter
 #   256 ppd -> 118 m/px  (11.3 GB), the resolution DeepMoon used
 # Changing this changes the DEM crop arithmetic in the pre-processing notebook,
 # so regenerate the patches after touching it.
-DEM_PPD = 128
+DEM_PPD = 256
 
 DEM_BASE_URL = 'http://imbrium.mit.edu/DATA/SLDEM2015/GLOBAL/FLOAT_IMG'
 
