@@ -5,4 +5,3 @@ patches/
 3_pre_processing/lunar_patches/
 __pycache__/
 3_pre_processing/lunar_patches_alltiles/
-4_training/mlruns

@@ -1,0 +1,15 @@
+artifact_uri: /home/ppxsv1/Lunar_LRO/4_training/mlruns/740428047653779455/1e0be15ad95048d6895ef9f654243553/artifacts
+end_time: 1788484956293
+entry_point_name: ''
+experiment_id: '740428047653779455'
+lifecycle_stage: active
+run_id: 1e0be15ad95048d6895ef9f654243553
+run_name: U-Net-v1_dem_32f_s42_10pct_256ppd
+run_uuid: 1e0be15ad95048d6895ef9f654243553
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1788484940983
+status: 4
+tags: []
+user_id: ppxsv1
