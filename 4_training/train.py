@@ -27,7 +27,7 @@ DATASET = 'alltiles'
 
 # resolution-tagged, so a 256 ppd run reads its own patches and cannot silently
 # train on (or overwrite) the 128 ppd set
-PATCHES_DIR = os.path.join('../3_pre_processing', patchesDirName(DATASET))
+PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
 
 print(tf.config.list_physical_devices('GPU'))
 
@@ -58,8 +58,8 @@ keras.utils.set_random_seed(SEED)
 params = {
     'dataset': DATASET,
     'dim': 256,
-    'channels': CHANNELS,               # 'both' | 'wac' | 'dem'
-    'input_channels': 2 if CHANNELS == 'both' else 1,   # derived: mismatch here silently breaks the run
+    'channels': 'dem',               # 'both' | 'wac' | 'dem'
+    'input_channels': 1,   # derived: mismatch here silently breaks the run
     'n_filters': 32,                    # v1's n filters -> baseline overrides this
     'FL': 3,                            # kernel size
     'init': 'he_normal',
