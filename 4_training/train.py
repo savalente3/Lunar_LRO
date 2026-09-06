@@ -52,8 +52,8 @@ keras.utils.set_random_seed(SEED)
 params = {
     'dataset': DATASET,
     'dim': 256,
-    'channels': 'dem',                 # 'both' | 'wac' | 'dem'
-    'input_channels': 1,                # 2 for both, 1 for ablations
+    'channels': 'both',                 # 'both' | 'wac' | 'dem'
+    'input_channels': 2,                # 2 for both, 1 for ablations
     'n_filters': 32,                    # v1's n filters -> baseline overrides this
     'FL': 3,                            # kernel size
     'init': 'he_normal',
@@ -66,7 +66,7 @@ params = {
     'focal_alpha': 0.75,                # weight on class 1, the rim. rare at 37:1 so it takes the lrager share
     'focal_gamma': 2.0,
     'focal_class_balancing': True,
-    'model': 'U-Net-v1',                # 'U-Net-v1' | 'DeepMoon-baseline'. selects the model file
+    'model': 'DeepMoon-paper',                # 'U-Net-v1' | 'DeepMoon-baseline'. selects the model file
     'seed': SEED,                        # same batch order + augmentation across all runs
     'patience': 5,                       # epochs without improvement before stopping
     'queue': 64,                         # batches buffered ahead of the GPU
@@ -78,7 +78,7 @@ if params['channels'] != 'both':
     params['input_channels'] = 1
 
 # DeepMoon uses 112 filters (paper 2.3)
-if params['model'] == 'DeepMoon-baseline':
+if params['model'] in ('DeepMoon-baseline', 'DeepMoon-paper'):
     params['n_filters'] = 112
 
 
@@ -143,7 +143,9 @@ print(f'y {y.shape} {y.dtype}  crater pixels {y.mean()*100:.2f}%')
 # architectures live in their own files -> the pipeline, loss and seed are shared
 # and only the network differs between runs. notes 9
 
-if params['model'] == 'DeepMoon-baseline':
+if params['model'] == 'DeepMoon-paper':
+    from model_deepmoon import buildModel
+elif params['model'] == 'DeepMoon-baseline':
     from model_baseline import buildModel
 else:
     from model_v1 import buildModel
