@@ -67,7 +67,7 @@ if params['channels'] == 'both':
 else:
     params['input_channels'] = 1
 
-if params['model'] == 'baseline':
+if params['model'] == 'model_deepmoon':
     params['n_filters'] = 112
 
 if params['loss'] == 'binary_focal_crossentropy':
