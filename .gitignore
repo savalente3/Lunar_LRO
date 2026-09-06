@@ -18,3 +18,4 @@ log_*.txt
 4_training/checkpoints/history_*.csv
 data_preparation/
 *.npz
+3_pre_processing/lunar_patches_alltiles_256ppd/

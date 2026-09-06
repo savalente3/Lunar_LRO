@@ -37,7 +37,7 @@ import numpy as np
 sys.path.append('../1_data_extraction')
 from LRO_data_class import patchesDirName
 
-PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
+PATCHES_DIR = '../3_pre_processing/' + patchesDirName('alltiles')
 OUT_DIR = PATCHES_DIR                                    # same dir; big files, 1.4 TB is fine
 FILE_SIZE = 1000                         # patches per .npz batch
 

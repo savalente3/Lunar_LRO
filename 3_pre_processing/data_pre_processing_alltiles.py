@@ -15,9 +15,10 @@ import cv2
 
 from sklearn.model_selection import train_test_split
 
-from LRO_data_class import getRegionalLunarData, getDEMLunarData, getFilteredLabels, percentileNormalise, maskGeneration
+from LRO_data_class import DEM_PPD, patchesDirName, getRegionalLunarData, getDEMLunarData, getFilteredLabels, percentileNormalise, maskGeneration
 
-PATCHES_DIR = './lunar_patches_alltiles'
+# name carries the DEM resolution, so a 256 ppd run cannot overwrite the 128 ppd patches
+PATCHES_DIR = f'./{patchesDirName("alltiles")}'
 FILTERED_LABELS_PATH = '../2_data_preparation/filtered_labels_alltiles.csv'
 
 
@@ -83,8 +84,12 @@ for tile in TILES:
 
     dataWAC = getRegionalLunarData(tile['name'])
 
-    dataDEM = dataDEM_full[int((60 - tile['lat_max']) * 128):int((60 - tile['lat_min']) * 128),
-                           int(tile['lon_min'] * 128):int(tile['lon_max'] * 128)]
+    # NB: the 128s here are the DEM's pixels PER DEGREE (DEM_PPD) - they index the
+    # global product by latitude/longitude. The other 128s in this cell are half the
+    # 256 px patch width and must NOT be changed with them; the two are equal only by
+    # coincidence at 128 ppd. A blanket find-and-replace corrupts every patch silently.
+    dataDEM = dataDEM_full[int((60 - tile['lat_max']) * DEM_PPD):int((60 - tile['lat_min']) * DEM_PPD),
+                           int(tile['lon_min'] * DEM_PPD):int(tile['lon_max'] * DEM_PPD)]
 
     filteredLabels = filteredLabels_all[
         (filteredLabels_all['LAT_CIRC_IMG'] >= tile['lat_min']) & (filteredLabels_all['LAT_CIRC_IMG'] < tile['lat_max']) &
@@ -97,6 +102,8 @@ for tile in TILES:
     wac_col = (filteredLabels['LON_CIRC_IMG'] - tile['lon_min']) * (dataWAC.shape[1] / lon_span)
     wac_row = (tile['lat_max'] - filteredLabels['LAT_CIRC_IMG']) * (dataWAC.shape[0] / lat_span)
 
+    # 128 = half the 256 px patch, in WAC pixels, rescaled to DEM pixels.
+    # Derived from the shapes, so it follows DEM_PPD automatically (54 at 128 ppd, 108 at 256 ppd).
     dem_half = int(128 * dataDEM.shape[1] / dataWAC.shape[1])
 
     mask_col, mask_row = wac_col.values, wac_row.values
