@@ -17,3 +17,4 @@ log_*.txt
 4_training/checkpoints/*_params.json
 4_training/checkpoints/history_*.csv
 data_preparation/
+*.npz
