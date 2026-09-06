@@ -1,8 +1,3 @@
-"""
-Streams patches from the memory-mapped .npy arrays built by convert_to_memmap.py.
-
-Same file/position ordering as the .npz loader it replaced - only the read changed.
-"""
 
 import os
 import numpy as np
