@@ -1,3 +1,18 @@
+# train
+# trains one model on the memory-mapped patches and logs the run to mlflow.
+# set 'model' and 'channels' in params below, everything else follows from them.
+# parameters:
+#         dataset: 'single' | 'alltiles'
+#         model: any model file in this folder
+#         channels: 'both' | 'wac' | 'dem'
+#         loss: 'binary_focal_crossentropy' or any keras loss name
+#         training_sample_percentage: % of each split, None uses the whole split
+# outputs:
+#         checkpoints/<run_name>.keras, the best weights by val_loss
+#         checkpoints/history_<run_name>.csv, per epoch train and val loss
+#         checkpoints/<run_name>_params.json, the params used
+#         an mlflow run under 'lunar-crater-detection'
+
 import sys
 sys.path.append('../1_data_extraction')
 

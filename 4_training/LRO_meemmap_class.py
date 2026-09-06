@@ -6,8 +6,18 @@ import keras
 from LRO_data_class import augment
 
 # [source]: N. Khedkar (project partner) - Lunar_LRO/training/convert_to_memmap.py
+# MemmapPatchSequence
+# feeds keras batches straight off the memory-mapped patch arrays, so each
+# patch costs one seek and no decompression.
 class MemmapPatchSequence(keras.utils.PyDataset):
 
+    # __init__
+    # opens the memmaps and groups the wanted indices by the file they live in.
+    # parameters:
+    #         indices: patch indices this sequence serves
+    #         patches_dir: directory holding wac_all.npy, dem_all.npy, mask_all.npy
+    #         params: training params, read for dim, batch_size, channels, seed
+    #         augment_data: apply flips and rotations, default True
     def __init__(self, indices, patches_dir, params, augment_data=True, **kwargs):
         super().__init__(**kwargs)
 
@@ -30,6 +40,9 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
         self.buildOrder()
 
+    # buildOrder
+    # shuffles the file order, and the positions inside each file, so a batch
+    # is not all the same terrain.
     def buildOrder(self):
 
         order = []
@@ -46,9 +59,18 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
         self.order = order
 
+    # __len__
+    # outputs:
+    #         int, number of full batches per epoch
     def __len__(self):
         return len(self.order) // self.batch_size
 
+    # __getitem__
+    # builds one batch, augmenting it when augment_data is set.
+    # parameters:
+    #         i: batch index
+    # outputs:
+    #         X (batch_size, dim, dim, input_channels) float32, y (batch_size, dim, dim, 1) float32
     def __getitem__(self, i):
 
         items = self.order[i * self.batch_size:(i + 1) * self.batch_size]
@@ -86,6 +108,8 @@ class MemmapPatchSequence(keras.utils.PyDataset):
 
         return X, y
 
+    # on_epoch_end
+    # reshuffles the order between epochs when augmenting.
     def on_epoch_end(self):
 
         if self.augment_data:

@@ -1,26 +1,25 @@
+# run_eval
+# executes evaluation.ipynb start to finish and writes the outputs back into it,
+# so the notebook holds its own figures and tables after the run.
+# parameters:
+#         none, everything is set in evaluation.ipynb
+# outputs:
+#         evaluation.ipynb with outputs, and the csv, json and png files the
+#         notebook saves under results/<model>/
+
 import os
-import sys
 
 import nbformat
 from nbclient import NotebookClient
 
 
-channels = sys.argv[1:] or ['wac', 'dem', 'both']
-
 here = os.path.dirname(os.path.abspath(__file__))
-notebook_path = os.path.join(here, 'evaluation.ipynb')
 
+os.environ['MPLBACKEND'] = 'Agg'
 
-for channel in channels:
+notebook = nbformat.read(os.path.join(here, 'evaluation.ipynb'), as_version=4)
 
-    print(f'evaluating {channel}', flush=True)
+client = NotebookClient(notebook, timeout=None, kernel_name='python3', resources={'metadata': {'path': here}})
+client.execute()
 
-    os.environ['EVAL_CHANNELS'] = channel
-    os.environ['MPLBACKEND'] = 'Agg'
-
-    notebook = nbformat.read(notebook_path, as_version=4)
-
-    client = NotebookClient(notebook, timeout=None, kernel_name='python3', resources={'metadata': {'path': here}})
-    client.execute()
-
-print(f'done: {channels}')
+nbformat.write(notebook, os.path.join(here, 'evaluation.ipynb'))

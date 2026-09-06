@@ -9,8 +9,13 @@ import numpy as np
 from skimage.draw import circle_perimeter
 
 
+# LunarDataset
+# loads the WAC tile, the DEM, the Robbins catalogue and the filtered labels,
+# and holds them together so the notebooks can reach one object.
 class LunarDataset:
  
+    # __init__
+    # loads every dataset on construction.
     def __init__(self):
         self.labels = None
         self.regionalLunarData = None
@@ -22,21 +27,39 @@ class LunarDataset:
         self.loadDEMLunarData()
         self.loadFilteredLabels()
     
+    # loadRegionalLunarImages
+    # loads the default WAC tile into self.regionalLunarData.
     def loadRegionalLunarImages(self):
         self.regionalLunarData = getRegionalLunarData()
 
+    # loadDEMLunarData
+    # loads the SLDEM2015 memmap into self.DEMLunarData.
     def loadDEMLunarData(self):
         self.DEMLunarData = getDEMLunarData()
     
+    # loadLunarLabels
+    # loads the Robbins catalogue into self.labels.
     def loadLunarLabels(self):
         self.labels = getLunarRobbinsLabels()
     
+    # loadFilteredLabels
+    # loads the filtered crater subset into self.mergedData.
     def loadFilteredLabels(self):
         self.mergedData = getFilteredLabels()
 
+    # rebuildMasks
+    # redraws the stored masks using the catalogue already held on the object.
+    # parameters:
+    #         patches_dir: directory holding the patch files
+    # outputs:
+    #         float, the fraction of pixels that are rim
     def rebuildMasks(self, patches_dir, **kwargs):
         return rebuildMasks(patches_dir, catalogue=self.labels, **kwargs)
 
+    # saveFiles
+    # writes the WAC array and the catalogue to disk.
+    # parameters:
+    #         output_dir: destination directory, default 'data'
     def saveFiles(self, output_dir="data"):
         os.makedirs(output_dir, exist_ok=True)
 
@@ -44,6 +67,14 @@ class LunarDataset:
         self.labels.to_csv(os.path.join(output_dir, "LunarLabels.csv"))
  
  
+# getRegionalLunarData
+# downloads one WAC 100 m/px global tile the first time it is asked for and
+# reads it from disk on every later call.
+# parameters:
+#         tile: tile name, default 'WAC_GLOBAL_E300N1350_100M'
+#         data_dir: where the .IMG is cached, default '../1_data_extraction/data'
+# outputs:
+#         array (18194, 27291) float32, reflectance
 def getRegionalLunarData(tile='WAC_GLOBAL_E300N1350_100M', data_dir='../1_data_extraction/data'):
     path = os.path.join(data_dir, f'{tile}.IMG')
 
@@ -64,6 +95,12 @@ def getRegionalLunarData(tile='WAC_GLOBAL_E300N1350_100M', data_dir='../1_data_e
     return data
  
  
+# getLunarRobbinsLabels
+# loads the Robbins (2019) lunar crater catalogue from kaggle.
+# parameters:
+#         file_path: csv inside the kaggle dataset, default the 2018 database
+# outputs:
+#         dataframe, one row per crater, 21 columns
 def getLunarRobbinsLabels(file_path="lunar_crater_database_robbins_2018.csv"):
     return pd.DataFrame(kagglehub.dataset_load(
         KaggleDatasetAdapter.PANDAS,
@@ -71,6 +108,13 @@ def getLunarRobbinsLabels(file_path="lunar_crater_database_robbins_2018.csv"):
         file_path,
     ))
 
+# getDEMLunarData
+# downloads SLDEM2015 at 256 ppd (118 m/px) once, then memory-maps it so the
+# 11 GB stays on disk and only the touched pages are read.
+# parameters:
+#         data_dir: where the .IMG is cached, default '../1_data_extraction/data'
+# outputs:
+#         memmap (30720, 92160) float32, elevation in km
 def getDEMLunarData(data_dir='../1_data_extraction/data'):
     path = os.path.join(data_dir, 'SLDEM2015_256_60S_60N_000_360_FLOAT.IMG')
 
@@ -88,6 +132,12 @@ def getDEMLunarData(data_dir='../1_data_extraction/data'):
     return np.memmap(path, dtype=np.float32, mode='r', shape=(30720, 92160))
  
  
+# getFilteredLabels
+# reads the crater subset written by the data_merge notebook.
+# parameters:
+#         path: csv written by data_merge, default '../2_data_preparation/filtered_labels.csv'
+# outputs:
+#         dataframe, or None if the file does not exist
 def getFilteredLabels(path='../2_data_preparation/filtered_labels.csv'):
     if not os.path.exists(path):
         print(f'filtered_labels.csv not found. Run smallLabelCraters.to_csv() in data_merge.ipynb first.')
@@ -95,6 +145,12 @@ def getFilteredLabels(path='../2_data_preparation/filtered_labels.csv'):
     
     return pd.read_csv(path)
 
+# getSplitIndices
+# loads the train, validation and test patch indices written by pre-processing.
+# parameters:
+#         splits: patches directory holding the .npy index files
+# outputs:
+#         three int arrays: train_idx, val_idx, test_idx
 def getSplitIndices(splits='../3_pre_processing/lunar_patches'):
     
     train_idx = np.load(os.path.join(splits, 'train_idx.npy'))
@@ -103,6 +159,16 @@ def getSplitIndices(splits='../3_pre_processing/lunar_patches'):
     
     return train_idx, val_idx, test_idx
 
+# augment
+# applies a random flip and 90 degree rotation to a patch and its mask.
+# craters are rotationally symmetric so every orientation is still valid.
+# parameters:
+#         wac: array (256, 256), optical patch
+#         dem: array (256, 256), elevation patch
+#         mask: array (256, 256), ring mask
+#         rng: numpy generator for reproducibility, default np.random
+# outputs:
+#         three arrays (256, 256), the augmented wac, dem and mask
 def augment(wac, dem, mask, rng=None):
     if rng is None:
         rng = np.random
@@ -126,11 +192,32 @@ def augment(wac, dem, mask, rng=None):
     return wac, dem, mask
 
 
+# percentileNormalise
+# clips a patch to its percentile range and rescales it to [0, 1], so a few
+# extreme pixels do not set the scale for the whole patch.
+# parameters:
+#         patch: 2D array, one WAC or DEM patch
+#         low: lower percentile, default 1
+#         high: upper percentile, default 99
+# outputs:
+#         array (256, 256) float, values in [0, 1]
 def percentileNormalise(patch, low=1, high=99):
     p_low, p_high = np.percentile(patch, [low, high])
     return (np.clip(patch, p_low, p_high) - p_low) / (p_high - p_low + 1e-8)
 
 
+# maskGeneration
+# draws a 1 px ring for every catalogue crater whose centre falls inside the
+# patch. rings rather than filled disks so overlapping craters stay separable.
+# parameters:
+#         patch_wac_col: patch centre column in tile pixels
+#         patch_wac_row: patch centre row in tile pixels
+#         wac_col: array of crater columns in tile pixels
+#         wac_row: array of crater rows in tile pixels
+#         diameters: array of crater diameters in km
+#         cos_lat: cosine of the patch latitude, corrects the E-W stretch
+# outputs:
+#         array (256, 256) uint8, 1 on a rim pixel and 0 elsewhere
 def maskGeneration(patch_wac_col, patch_wac_row, wac_col, wac_row, diameters, cos_lat):
     wac_col = np.asarray(wac_col)
     wac_row = np.asarray(wac_row)
@@ -160,6 +247,16 @@ def maskGeneration(patch_wac_col, patch_wac_row, wac_col, wac_row, diameters, co
     return mask
 
 
+# fitTileMap
+# fits lon/lat to tile pixel coordinates for one tile, using the craters that
+# kept_labels already carries, then applies that fit to the catalogue.
+# parameters:
+#         kept_labels: dataframe of stored patches
+#         tile_name: which tile to fit
+#         catalogue: Robbins dataframe to map
+#         margin: degrees of slack around the tile, default 2.0
+# outputs:
+#         three arrays: crater columns, rows and diameters near the tile
 def fitTileMap(kept_labels, tile_name, catalogue, margin=2.0):
     rows = kept_labels[kept_labels['tile'] == tile_name].dropna(subset=['LON_CIRC_IMG', 'wac_col'])
 
@@ -184,6 +281,18 @@ def fitTileMap(kept_labels, tile_name, catalogue, margin=2.0):
     )
 
 
+# rebuildMasks
+# redraws every stored mask from the catalogue without re-extracting patches,
+# and rewrites the .npz files and mask_all.npy in place.
+# parameters:
+#         patches_dir: directory holding the patch files
+#         catalogue: Robbins dataframe, default loads it here
+#         arc_min: ARC_IMG filter, default 0.5
+#         max_diameter: km cap on crater size, default None
+#         file_size: patches per .npz, default 1000
+#         verbose: print progress, default True
+# outputs:
+#         float, the fraction of pixels that are rim
 def rebuildMasks(patches_dir, catalogue=None, arc_min=0.5, max_diameter=None, file_size=1000, verbose=True):
     kept = pd.read_csv(os.path.join(patches_dir, 'kept_labels.csv'), low_memory=False)
 
@@ -238,6 +347,13 @@ def rebuildMasks(patches_dir, catalogue=None, arc_min=0.5, max_diameter=None, fi
     return fraction
 
 
+# getNormalisedBatch
+# loads one .npz batch and percentile normalises the wac and dem patches.
+# parameters:
+#         batch_num: which .npz batch to load
+#         patches_dir: directory holding the patch files
+# outputs:
+#         three arrays (1000, 256, 256): normalised wac, normalised dem, mask
 def getNormalisedBatch(batch_num, patches_dir='../3_pre_processing/lunar_patches'):
 
     wac  = np.load(os.path.join(patches_dir, f'X_wac_{batch_num}.npz'))['arr_0']
@@ -259,6 +375,14 @@ def getNormalisedBatch(batch_num, patches_dir='../3_pre_processing/lunar_patches
     return norm_wac, norm_dem, mask
 
 
+# getAugmentedBatch
+# loads one normalised batch and augments every patch in it.
+# parameters:
+#         batch_num: which .npz batch to load
+#         patches_dir: directory holding the patch files
+#         rng: numpy generator for reproducibility, default np.random
+# outputs:
+#         three arrays (1000, 256, 256): wac, dem, mask
 def getAugmentedBatch(batch_num, patches_dir='../3_pre_processing/lunar_patches', rng=None):
     wac, dem, mask = getNormalisedBatch(batch_num, patches_dir)
 
@@ -268,10 +392,30 @@ def getAugmentedBatch(batch_num, patches_dir='../3_pre_processing/lunar_patches'
     return wac, dem, mask
 
 
+# stepsPerEpoch
+# how many full batches one pass over the indices produces.
+# parameters:
+#         indices: array of patch indices
+#         batch_size: patches per batch, default 8
+# outputs:
+#         int, number of batches
 def stepsPerEpoch(indices, batch_size=8):
     return len(indices) // batch_size
 
 
+# patchGenerator
+# yields training batches forever, shuffling the file order and the positions
+# inside each file so one batch is not all the same terrain.
+# parameters:
+#         indices: patch indices to draw from
+#         batch_size: patches per batch, default 8
+#         channels: 'both' | 'wac' | 'dem', default 'both'
+#         augment_data: apply flips and rotations, default True
+#         patches_dir: directory holding the patch files
+#         rng: numpy generator for reproducibility, default np.random
+#         file_size: patches per .npz, default 1000
+# outputs:
+#         X (batch_size, 256, 256, channels) float32, y (batch_size, 256, 256, 1) float32
 def patchGenerator(indices, batch_size=8, channels='both', augment_data=True, patches_dir='../3_pre_processing/lunar_patches', rng=None, file_size=1000):
     if channels not in ('both', 'wac', 'dem'):
         raise ValueError(f"channels must be 'both', 'wac' or 'dem', got {channels!r}")

@@ -4,6 +4,13 @@ from keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Concatenate, Dro
 from keras.regularizers import l2
 
 
+# buildModel
+# builds the 4 level U-Net, filters doubling down the encoder and halving back
+# up the decoder, with a sigmoid output for the rim mask.
+# parameters:
+#         params: dict read for dim, input_channels, n_filters, FL, init, lmbda, dropout
+# outputs:
+#         keras model, input (dim, dim, input_channels), output (dim, dim, 1)
 def buildModel(params):
 
     img_input = keras.Input(shape=(params['dim'], params['dim'], params['input_channels']))
