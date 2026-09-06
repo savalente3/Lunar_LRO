@@ -19,7 +19,6 @@ sys.path.append('../1_data_extraction')
 import os
 import json
 import importlib
-import subprocess
 import numpy as np
 import mlflow
 import keras
@@ -28,7 +27,7 @@ import tensorflow as tf
 import mlflow.keras
 
 from LRO_data_class import getSplitIndices
-from LRO_meemmap_class import MemmapPatchSequence
+from LRO_meemmap_class import MemmapPatchSequence, buildMemmaps
 
 
 # only change: 'model' and 'channels'
@@ -90,8 +89,8 @@ print(tf.config.list_physical_devices('GPU'))
 
 
 if not os.path.exists(os.path.join(PATCHES_DIR, 'wac_all.npy')):
-    print('memmaps not found - running convert_to_memmap.py', flush=True)
-    subprocess.run([sys.executable, 'convert_to_memmap.py'], cwd='../training', check=True)
+    print('memmaps not found - building them', flush=True)
+    buildMemmaps(PATCHES_DIR)
 
 
 train_idx, val_idx, test_idx = getSplitIndices(PATCHES_DIR)
