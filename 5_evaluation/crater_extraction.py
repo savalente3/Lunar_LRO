@@ -11,6 +11,20 @@ from skimage.feature import match_template
 # [source]: Silburt et al. (2019) - utils/template_match_target.py
 # Turns the U-Net's fuzzy probability mask into a list of (x, y, radius) craters.
 
+# template_match_t
+# turns the model's probability map into a crater list by sliding a ring
+# template of every radius over it and keeping the good matches, then dropping
+# duplicates that describe the same crater.
+# parameters:
+#         target: array (256, 256), predicted rim probabilities
+#         minrad: smallest radius searched in px, default 5
+#         maxrad: largest radius searched in px, default 50
+#         longlat_thresh2: squared centre distance tolerance, default 1.8
+#         rad_thresh: radius tolerance, default 1.0
+#         template_thresh: correlation needed to accept a match, default 0.5
+#         target_thresh: probability above which a pixel counts as rim, default 0.1
+# outputs:
+#         array (n, 3), each row x, y, radius in px
 def template_match_t(target, minrad=5, maxrad=50, longlat_thresh2=1.8, rad_thresh=1.0, template_thresh=0.5, target_thresh=0.1):
 
     # ring thickness of the stamp
@@ -79,6 +93,15 @@ def template_match_t(target, minrad=5, maxrad=50, longlat_thresh2=1.8, rad_thres
 # counting those as misses penalises the model for what it can't find
 # same idea as DeepMoon's rmv_oor_csvs flag
 
+# filter_to_detectable
+# drops craters outside the radius range template matching can find, so they
+# are not counted as misses the model never had a chance at.
+# parameters:
+#         coords: array (n, 3) of x, y, radius
+#         minrad: smallest detectable radius in px, default 5
+#         maxrad: largest detectable radius in px, default 50
+# outputs:
+#         array (m, 3), the craters inside the range
 def filter_to_detectable(coords, minrad=5, maxrad=50):
 
     coords = np.asarray(coords)
@@ -99,6 +122,18 @@ def filter_to_detectable(coords, minrad=5, maxrad=50):
 # tightly craters cluster relative to their own radius, not a loss - only the paired
 # crater is removed, so the rest stay matchable - see CONCEPT_Evaluation.md
 
+# match_coords
+# pairs detections with catalogue craters. both tolerances are divided by the
+# crater radius, so 'close' scales with crater size.
+# parameters:
+#         ground_truth: array (n, 3) of catalogue craters
+#         crater_detections: array (m, 3) of detections
+#         longlat_thresh: squared centre distance tolerance, default 1.8
+#         rad_thresh: radius tolerance, default 1.0
+# outputs:
+#         match_count, detection_count, truth_count,
+#         matched_pairs (k, 6) as detection x,y,r then truth x,y,r,
+#         false_positives (j, 3), multi_match_count
 def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh=1.0):
 
     remaining_truth = np.asarray(ground_truth).copy()
@@ -151,6 +186,19 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
 
 # Robbins craters inside one patch, in patch pixel coords.
 
+# truth_coords_for_patch
+# converts catalogue craters from tile pixels into one patch's pixel frame,
+# applying the cos(lat) correction for the E-W stretch.
+# parameters:
+#         center_col: patch centre column in tile pixels
+#         center_row: patch centre row in tile pixels
+#         patch_lat: patch latitude in degrees
+#         wac_col: array of crater columns in tile pixels
+#         wac_row: array of crater rows in tile pixels
+#         diameters: array of crater diameters in km
+#         margin: px of slack outside the patch, default 0
+# outputs:
+#         array (n, 3), each row x, y, radius in patch px
 def truth_coords_for_patch(center_col, center_row, patch_lat, wac_col, wac_row, diameters, margin=0):
 
     cos_lat = np.cos(np.radians(patch_lat))
@@ -175,6 +223,14 @@ def truth_coords_for_patch(center_col, center_row, patch_lat, wac_col, wac_row, 
     return np.column_stack([rel_col, rel_row, radius])
 
 
+# filter_edge_craters
+# drops craters sitting too close to the patch edge to be measured properly.
+# parameters:
+#         coords: array (n, 3) of x, y, radius
+#         dim: patch size in px, default 256
+#         cutrad: fraction of the radius allowed outside the patch, default 0.8
+# outputs:
+#         array (m, 3), the craters far enough inside
 def filter_edge_craters(coords, dim=256, cutrad=0.8):
 
     coords = np.asarray(coords)
@@ -195,6 +251,14 @@ def filter_edge_craters(coords, dim=256, cutrad=0.8):
 # A detection sitting on a catalogue crater excluded by the < 10 km label cut.
 # The crater is real, it just has no label, so the detection is not a model error. notes 18.4
 
+# matchesExcludedCrater
+# flags detections that sit on a crater of 10 km or more. those are outside
+# the label set, so they are excluded rather than counted as false positives.
+# parameters:
+#         detections: array (n, 3) of x, y, radius
+#         large_craters: array (m, 3) of craters >= 10 km in patch px
+# outputs:
+#         bool array (n,), True where a detection is explained by a large crater
 def matchesExcludedCrater(detections, large_craters):
 
     detections = np.asarray(detections)
