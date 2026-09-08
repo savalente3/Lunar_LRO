@@ -47,14 +47,14 @@ params = {
     'focal_alpha': 0.75,
     'focal_gamma': 2.0,
     'focal_class_balancing': True,
-    'model': 'U_Net_v1',                # any model file in this folder
+    'model': 'model_deepmoon',                # any model file in this folder
     'seed': 42,
     'patience': 5,
     'queue': 64,
     'training_sample_percentage': 10,   # % of each split
 }
 
-# Parameter controls
+# Parameter contrlos
 if params['dataset'] == 'single':
     PATCHES_DIR = '../3_pre_processing/lunar_patches'
 else:
@@ -161,7 +161,7 @@ with open(f'checkpoints/{run_name}_params.json', 'w') as f:
     json.dump(params, f, indent=2)
 
 
-# [source]: https://mlflow.org/docs/latest/python_api/mlflow.keras.html
+# [sorce]: https://mlflow.org/docs/latest/python_api/mlflow.keras.html
 # [example source]: https://github.com/mlflow/mlflow/blob/master/examples/keras/train.py
 
 mlflow.set_tracking_uri('mlruns')
