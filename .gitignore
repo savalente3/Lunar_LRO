@@ -3,19 +3,23 @@
 patches/
 2_data_preparation/*.csv
 3_pre_processing/lunar_patches/
-__pycache__/
 3_pre_processing/lunar_patches_alltiles/
+3_pre_processing/lunar_patches_alltiles_256ppd/
+data_preparation/
+__pycache__/
+
 # runtime artifacts - models, experiment tracking, logs
 *.keras
 mlruns/
 *.db
 *.log
 log_*.txt
-3_pre_processing/lunar_patches_alltiles/
 
 # per-run artifacts - superseded by the combined history and MLflow
 4_training/checkpoints/*_params.json
 4_training/checkpoints/history_*.csv
-data_preparation/
+
+# patch data is ignored, but the evaluation match arrays are kept so a clone
+# carries everything compare_models.py needs for one run
 *.npz
-3_pre_processing/lunar_patches_alltiles_256ppd/
+!**/results/**/arrays.npz
