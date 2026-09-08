@@ -80,7 +80,7 @@ else:
 
 
 
-run_name = f"{params['model']}_{params['channels']}_{params['n_filters']}f_s{params['seed']}_{params['training_sample_percentage']}pct"
+run_name = f"{params['model']}_{params['channels']}_s{params['seed']}_{params['training_sample_percentage']}pct"
 buildModel = importlib.import_module(params['model']).buildModel
 
 keras.utils.set_random_seed(params['seed'])
