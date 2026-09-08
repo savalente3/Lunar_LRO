@@ -19,7 +19,6 @@ sys.path.append('../1_data_extraction')
 import os
 import json
 import importlib
-import subprocess
 import numpy as np
 import mlflow
 import keras
@@ -28,7 +27,7 @@ import tensorflow as tf
 import mlflow.keras
 
 from LRO_data_class import getSplitIndices
-from LRO_meemmap_class import MemmapPatchSequence
+from LRO_meemmap_class import MemmapPatchSequence, buildMemmaps
 
 
 # only change: 'model' and 'channels'
@@ -48,14 +47,14 @@ params = {
     'focal_alpha': 0.75,
     'focal_gamma': 2.0,
     'focal_class_balancing': True,
-    'model': 'U_Net_v1',                # any model file in this folder
+    'model': 'model_deepmoon',                # any model file in this folder
     'seed': 42,
     'patience': 5,
     'queue': 64,
     'training_sample_percentage': 10,   # % of each split
 }
 
-# Parameter controls
+# Parameter contrlos
 if params['dataset'] == 'single':
     PATCHES_DIR = '../3_pre_processing/lunar_patches'
 else:
@@ -81,7 +80,7 @@ else:
 
 
 
-run_name = f"{params['model']}_{params['channels']}_{params['n_filters']}f_s{params['seed']}_{params['training_sample_percentage']}pct"
+run_name = f"{params['model']}_{params['channels']}_s{params['seed']}_{params['training_sample_percentage']}pct"
 buildModel = importlib.import_module(params['model']).buildModel
 
 keras.utils.set_random_seed(params['seed'])
@@ -90,8 +89,8 @@ print(tf.config.list_physical_devices('GPU'))
 
 
 if not os.path.exists(os.path.join(PATCHES_DIR, 'wac_all.npy')):
-    print('memmaps not found - running convert_to_memmap.py', flush=True)
-    subprocess.run([sys.executable, 'convert_to_memmap.py'], cwd='../training', check=True)
+    print('memmaps not found - building them', flush=True)
+    buildMemmaps(PATCHES_DIR)
 
 
 train_idx, val_idx, test_idx = getSplitIndices(PATCHES_DIR)
@@ -162,7 +161,7 @@ with open(f'checkpoints/{run_name}_params.json', 'w') as f:
     json.dump(params, f, indent=2)
 
 
-# [source]: https://mlflow.org/docs/latest/python_api/mlflow.keras.html
+# [sorce]: https://mlflow.org/docs/latest/python_api/mlflow.keras.html
 # [example source]: https://github.com/mlflow/mlflow/blob/master/examples/keras/train.py
 
 mlflow.set_tracking_uri('mlruns')
