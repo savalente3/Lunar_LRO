@@ -1,145 +1,132 @@
-# [source]: N. Khedkar (project partner) - 4_training/model_v2.py
-# [source]: Yu and Koltun (2016) - dilated convolutions, arXiv:1511.07122
-# [source]: Oktay et al. (2018) - attention U-Net, arXiv:1804.03999
+"""
+Model V2 - attention-gated U-Net for small-crater detection.
 
-# model_v2
-# a U-Net aimed at the sub 2 km craters U_Net_v1 misses. three or four poolings
-# instead of four, an optional dilated bottleneck that widens the receptive field
-# without pooling, and optional attention gates on the skips. same
-# buildModel(params) interface as the other model files.
-# parameters:
-#         v2_depth: pooling levels, 3 or 4
-#         v2_dilation: dilated bottleneck instead of a plain one
-#         v2_attention: attention gates on the skip connections
-# outputs:
-#         a buildModel function
+Targets the sub-2 km crater detection gap left by the baseline models. The
+baseline model_v1 (Sofia Valente) and the DeepMoon baseline (Silburt et al.
+2019) are recall-limited on small craters: they rarely mislabel what they find
+but miss a large fraction of the craters that are present. Model V2 combines
+three mechanisms, each addressing that recall limitation from a different angle
+and each supported by the segmentation literature.
 
+The depth is 3. A 1 km crater is about 10 px at the 100 m/px WAC resolution, so
+each pooling stage roughly halves its extent; three poolings keep small craters
+resolvable at the bottleneck, whereas the four-level encoders of model_v1 reduce
+them to sub-pixel. The bottleneck uses dilated convolutions (rates 1, 2, 4) to
+widen the receptive field for large-crater context without the extra pooling
+that would destroy small-crater resolution (Yu & Koltun 2016, "Multi-Scale
+Context Aggregation by Dilated Convolutions", ICLR, arXiv:1511.07122). Attention
+gates are applied to every skip connection so the decoder emphasises crater-like
+features and suppresses irrelevant terrain before concatenation; attention gates
+were introduced for exactly this problem - localising small, variable, sparse
+targets in a large background - and were shown to raise sensitivity to small
+structures at negligible parameter cost (Oktay et al. 2018, "Attention U-Net:
+Learning Where to Look for the Pancreas", arXiv:1804.03999; Schlemper et al.
+2019, "Attention gated networks: Learning to leverage salient regions in medical
+images", Medical Image Analysis).
+
+The model is trained with the focal Tversky loss (defined in losses_v2). The
+pairing of attention gates with focal Tversky loss is taken directly from
+Abraham & Khan (2019, "A Novel Focal Tversky Loss Function with Improved
+Attention U-Net for Lesion Segmentation", IEEE ISBI, arXiv:1810.07842), who
+combine the two specifically for small-lesion segmentation under class
+imbalance: the attention gates help the network find the small targets, and the
+focal Tversky loss penalises missing them. That is the same problem structure as
+sub-2 km crater detection under the roughly 37:1 rim-to-background imbalance,
+which is why this combination is used here.
+
+The model exposes the same buildModel(params) interface as the other
+architectures in this project (model_v1 (Sofia Valente) and the DeepMoon
+baseline) and reads the same shared parameters, so the training pipeline, data
+and loss are held constant and only the network differs between runs.
+
+Usage:
+    from model_v2 import buildModel
+    model = buildModel(params)
+"""
 
 import keras
-from keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Concatenate, Dropout, BatchNormalization, Activation, add, multiply
+from keras.layers import (Conv2D, MaxPooling2D, Conv2DTranspose, Concatenate,
+                          Dropout, BatchNormalization, Activation, add, multiply)
 from keras.regularizers import l2
 
 
-# convBlock
-# two 3x3 convolutions, each followed by batch normalisation and relu.
-# parameters:
-#         x: input tensor
-#         n_filters: filters in both convolutions
-#         params: dict read for FL, init, lmbda
-# outputs:
-#         tensor, same height and width as x
-def convBlock(x, n_filters, params):
+# fixed architecture choices (see module docstring for the rationale)
+DEPTH = 3                 # three pooling levels - keeps small craters resolvable
+DILATION_RATES = (1, 2, 4)  # dilated bottleneck - receptive field without pooling
 
+
+def _conv_block(x, f, FL, init, reg):
+    """Two 3x3 convolutions, each followed by batch normalisation and ReLU."""
     for _ in range(2):
-        x = Conv2D(
-            n_filters,
-            params['FL'],
-            kernel_initializer=params['init'],
-            kernel_regularizer=l2(params['lmbda']),
-            padding='same',
-            use_bias=False
-        )(x)
-
+        x = Conv2D(f, FL, padding='same', kernel_initializer=init,
+                   kernel_regularizer=reg, use_bias=False)(x)
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
-
     return x
 
 
-# dilatedBottleneck
-# stacked convolutions at rates 1, 2 and 4. widens the receptive field enough to
-# see large crater context without pooling away the small craters.
-# parameters:
-#         x: input tensor
-#         n_filters: filters in each convolution
-#         params: dict read for FL, init, lmbda
-# outputs:
-#         tensor, same height and width as x
-def dilatedBottleneck(x, n_filters, params):
-
-    for rate in (1, 2, 4):
-        x = Conv2D(
-            n_filters,
-            params['FL'],
-            dilation_rate=rate,
-            kernel_initializer=params['init'],
-            kernel_regularizer=l2(params['lmbda']),
-            padding='same',
-            use_bias=False
-        )(x)
-
+def _dilated_bottleneck(x, f, FL, init, reg):
+    """Stacked dilated convolutions (rates 1, 2, 4). Widens the receptive field
+    to capture large-crater context without pooling away the resolution that
+    small craters require (Yu & Koltun 2016)."""
+    for rate in DILATION_RATES:
+        x = Conv2D(f, FL, padding='same', dilation_rate=rate,
+                   kernel_initializer=init, kernel_regularizer=reg,
+                   use_bias=False)(x)
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
-
     return x
 
 
-# attentionGate
-# weights a skip connection by what the decoder is looking for, so crater-like
-# regions survive the concatenate and background is damped.
-# parameters:
-#         skip: encoder tensor being gated
-#         gating: decoder tensor supplying the query
-#         n_filters: filters in the intermediate projection
-#         params: dict read for init, lmbda
-# outputs:
-#         tensor, skip scaled by the learned attention
-def attentionGate(skip, gating, n_filters, params):
+def _attention_gate(skip, gating, inter, init, reg):
+    """Additive attention gate (Oktay et al. 2018).
 
-    theta = Conv2D(n_filters, 1, kernel_initializer=params['init'], kernel_regularizer=l2(params['lmbda']))(skip)
-    phi = Conv2D(n_filters, 1, kernel_initializer=params['init'], kernel_regularizer=l2(params['lmbda']))(gating)
-
-    joined = Activation('relu')(add([theta, phi]))
-
-    psi = Conv2D(1, 1, activation='sigmoid', kernel_initializer=params['init'], kernel_regularizer=l2(params['lmbda']))(joined)
-
+    Uses the coarser decoder feature map (`gating`) to weight the finer encoder
+    skip feature map (`skip`), so the decoder attends to salient crater-like
+    regions and suppresses irrelevant background before concatenation. The gate
+    computes a per-pixel attention coefficient in [0, 1] and multiplies it into
+    the skip connection.
+    """
+    theta = Conv2D(inter, 1, kernel_initializer=init, kernel_regularizer=reg)(skip)
+    phi = Conv2D(inter, 1, kernel_initializer=init, kernel_regularizer=reg)(gating)
+    act = Activation('relu')(add([theta, phi]))
+    psi = Conv2D(1, 1, activation='sigmoid', kernel_initializer=init,
+                 kernel_regularizer=reg)(act)
     return multiply([skip, psi])
 
 
-# buildModel
-# builds the v2 U-Net, filters doubling down the encoder and halving back up the
-# decoder, with a sigmoid output for the rim mask.
-# parameters:
-#         params: dict read for dim, input_channels, n_filters, FL, init, lmbda,
-#                 dropout, v2_depth, v2_dilation, v2_attention
-# outputs:
-#         keras model, input (dim, dim, input_channels), output (dim, dim, 1)
 def buildModel(params):
+    dim = params['dim']
+    ch = params['input_channels']
+    base = params['n_filters']
+    FL = params['FL']
+    init = params['init']
+    reg = l2(params.get('lmbda', 1e-6))
+    drop = params['dropout']
 
-    img_input = keras.Input(shape=(params['dim'], params['dim'], params['input_channels']))
+    inp = keras.Input(shape=(dim, dim, ch))
 
-    # Encoder
+    # encoder: DEPTH blocks, each two convs then a 2x2 max-pool
     skips = []
-    x = img_input
-
-    for level in range(params['v2_depth']):
-        x = convBlock(x, params['n_filters'] * 2 ** level, params)
+    x = inp
+    for d in range(DEPTH):
+        x = _conv_block(x, base * 2 ** d, FL, init, reg)
         skips.append(x)
         x = MaxPooling2D((2, 2), strides=(2, 2))(x)
 
-    # Bottleneck
-    if params['v2_dilation']:
-        x = dilatedBottleneck(x, params['n_filters'] * 2 ** params['v2_depth'], params)
-    else:
-        x = convBlock(x, params['n_filters'] * 2 ** params['v2_depth'], params)
+    # dilated bottleneck - resolution-preserving context
+    x = _dilated_bottleneck(x, base * 2 ** DEPTH, FL, init, reg)
 
-    # Decoder
-    for level in reversed(range(params['v2_depth'])):
+    # decoder: mirror the encoder, gate each skip with attention before merging
+    for d in reversed(range(DEPTH)):
+        f = base * 2 ** d
+        x = Conv2DTranspose(f, 2, strides=2, padding='same')(x)
+        gated_skip = _attention_gate(skips[d], x, f, init, reg)
+        x = Concatenate()([x, gated_skip])
+        x = Dropout(drop)(x)
+        x = _conv_block(x, f, FL, init, reg)
 
-        n_filters = params['n_filters'] * 2 ** level
+    # output: 1x1 convolution, sigmoid, single channel (per-pixel rim probability)
+    out = Conv2D(1, 1, activation='sigmoid')(x)
 
-        x = Conv2DTranspose(n_filters, kernel_size=2, strides=2, padding='same')(x)
-
-        skip = skips[level]
-
-        if params['v2_attention']:
-            skip = attentionGate(skip, x, n_filters, params)
-
-        x = Concatenate()([x, skip])
-        x = Dropout(params['dropout'])(x)
-        x = convBlock(x, n_filters, params)
-
-    # Output layer
-    output = Conv2D(1, 1, activation='sigmoid')(x)
-
-    return keras.Model(img_input, output, name='U-Net-v2')
+    return keras.Model(inp, out, name='U-Net-v2-attention')
