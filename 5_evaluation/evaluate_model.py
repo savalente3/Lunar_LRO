@@ -10,8 +10,7 @@
 # parameters:
 #         argv[1]: results directory name, for example model_v2att
 #         argv[2]: both | wac | dem
-#         argv[3]: dem resolution in ppd, 128 | 256
-#         argv[4]: checkpoint path, optional for the runs listed in DEFAULT_RUNS
+#         argv[3]: checkpoint path, optional for the runs listed in DEFAULT_RUNS
 # outputs:
 #         results/<model>/<channel>/{sweep.csv, per_patch.csv, headline.json,
 #         arrays.npz, labelled_*.png}
@@ -37,25 +36,24 @@ from LRO_data_class import getSplitIndices, percentileNormalise, getLunarRobbins
 
 # checkpoint name templates for the runs this project reports, so the common
 # case needs no path on the command line. anything not listed here is passed as
-# argv[4]. {channel} is substituted, and the 128 ppd runs carry no suffix.
+# argv[3]. {channel} is substituted.
 DEFAULT_RUNS = {
     'model_v2att': 'U-Net-v2-attention_focal_tversky_{channel}_32f_s42_10pct_256ppd',
+    'model_deepmoon': 'model_deepmoon_{channel}_s42_10pct',
+    'U_Net_v1': 'U_Net_v1_{channel}_s42_10pct',
 }
 
 MODEL = sys.argv[1]
 CHANNEL = sys.argv[2]
-PPD = int(sys.argv[3])
 
-RESOLUTION_TAG = '' if PPD == 128 else f'_{PPD}ppd'
-
-if len(sys.argv) > 4:
-    CHECKPOINT = sys.argv[4]
+if len(sys.argv) > 3:
+    CHECKPOINT = sys.argv[3]
     RUN_NAME = os.path.splitext(os.path.basename(CHECKPOINT))[0]
 else:
     RUN_NAME = DEFAULT_RUNS[MODEL].format(channel=CHANNEL)
     CHECKPOINT = os.path.join('../4_training/checkpoints', f'{RUN_NAME}.keras')
 
-PATCHES_DIR = f'../3_pre_processing/lunar_patches_alltiles{RESOLUTION_TAG}'
+PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
 LABELS_CSV = '../2_data_preparation/filtered_labels_alltiles.csv'
 CHECKPOINT_DIR = '../4_training/checkpoints'
 
