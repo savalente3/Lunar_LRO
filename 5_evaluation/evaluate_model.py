@@ -37,8 +37,9 @@ from LRO_data_class import getSplitIndices, percentileNormalise, getLunarRobbins
 # checkpoint name templates for the runs this project reports, so the common
 # case needs no path on the command line. anything not listed here is passed as
 # argv[3]. {channel} is substituted.
+# 'model_v2att': 'U-Net-v2-attention_focal_tversky_{channel}_32f_s42_10pct_256ppd',
+
 DEFAULT_RUNS = {
-    'model_v2att': 'U-Net-v2-attention_focal_tversky_{channel}_32f_s42_10pct_256ppd',
     'model_deepmoon': 'model_deepmoon_{channel}_s42_10pct',
     'U_Net_v1': 'U_Net_v1_{channel}_s42_10pct',
 }
