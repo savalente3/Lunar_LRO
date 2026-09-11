@@ -1,5 +1,5 @@
 {
-  "model": "U_Net_v1",
+  "model": "deep_U_net",
   "run_name": "U_Net_v1_both_s42_10pct",
   "channel": "both",
   "best_threshold": 0.4,

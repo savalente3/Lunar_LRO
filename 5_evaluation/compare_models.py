@@ -9,7 +9,7 @@
 # model in the comparison or is not drawn at all.
 # parameters:
 #         argv[1:]: series to include, each model_dir:channel, for example
-#                   model_v2att:both U_Net_v1:both deepmoon-paper:both.
+#                   dilated_U_net:both deep_U_net:both baseline:both.
 #                   with no arguments every channel of every model under
 #                   results/ that carries a headline.json is included.
 # outputs:
@@ -43,10 +43,9 @@ DEEPMOON_LABEL = 'DeepMoon, Silburt et al. (2019)'
 CHANNEL_LABELS = {'wac': 'WAC only', 'dem': 'DEM only', 'both': 'WAC + DEM', 'wac+dem': 'WAC + DEM'}
 
 MODEL_LABELS = {
-    'model_v2att': 'U-Net v2 attention',
-    'model_deepmoon': 'DeepMoon architecture',
-    'deepmoon-paper': 'DeepMoon architecture',
-    'U_Net_v1': 'U-Net v1',
+    'baseline': 'Baseline U-Net',
+    'deep_U_net': 'Deep U-Net',
+    'dilated_U_net': 'Dilated U-Net',
 }
 
 PALETTE = ['tab:green', 'tab:blue', 'tab:orange', 'tab:purple', 'tab:red', 'tab:brown', 'tab:pink']
@@ -225,7 +224,7 @@ ax.legend(loc='lower left', fontsize=8)
 saveFigure(fig, 'precision_recall.png')
 
 
-# precision and recall by crater diameter, with the model_v1 baseline marked
+# precision and recall by crater diameter, with the deep_U_net baseline marked
 
 bin_labels = series_list[0]['headline']['per_band']['bins']
 x = np.arange(len(bin_labels))

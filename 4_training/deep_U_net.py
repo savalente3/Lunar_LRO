@@ -212,4 +212,4 @@ def buildModel(params):
     # Output layer
     output = Conv2D(1, 1, activation='sigmoid')(d4)
 
-    return keras.Model(img_input, output, name='U-Net-v1')
+    return keras.Model(img_input, output, name='deep_U_net')

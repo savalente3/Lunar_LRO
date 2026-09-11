@@ -23,3 +23,5 @@ log_*.txt
 # carries everything compare_models.py needs for one run
 *.npz
 !**/results/**/arrays.npz
+# macOS folder metadata
+.DS_Store

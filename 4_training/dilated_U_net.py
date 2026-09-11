@@ -1,8 +1,9 @@
 """
-Model V2 - attention-gated U-Net for small-crater detection.
+dilated_U_net - attention-gated U-Net with a dilated bottleneck for small-crater
+detection (the Dilated U-Net in the report; originally model_v2.py).
 
 Targets the sub-2 km crater detection gap left by the baseline models. The
-baseline model_v1 (Sofia Valente) and the DeepMoon baseline (Silburt et al.
+Deep U-Net (deep_U_net, Sofia Valente) and the Baseline U-Net (Silburt et al.
 2019) are recall-limited on small craters: they rarely mislabel what they find
 but miss a large fraction of the craters that are present. Model V2 combines
 three mechanisms, each addressing that recall limitation from a different angle
@@ -10,7 +11,7 @@ and each supported by the segmentation literature.
 
 The depth is 3. A 1 km crater is about 10 px at the 100 m/px WAC resolution, so
 each pooling stage roughly halves its extent; three poolings keep small craters
-resolvable at the bottleneck, whereas the four-level encoders of model_v1 reduce
+resolvable at the bottleneck, whereas the four-level encoder of deep_U_net reduces
 them to sub-pixel. The bottleneck uses dilated convolutions (rates 1, 2, 4) to
 widen the receptive field for large-crater context without the extra pooling
 that would destroy small-crater resolution (Yu & Koltun 2016, "Multi-Scale
@@ -24,23 +25,23 @@ Learning Where to Look for the Pancreas", arXiv:1804.03999; Schlemper et al.
 2019, "Attention gated networks: Learning to leverage salient regions in medical
 images", Medical Image Analysis).
 
-The model is trained with the focal Tversky loss (defined in losses_v2). The
+The model is trained with the focal Tversky loss (defined in losses). The
 pairing of attention gates with focal Tversky loss is taken directly from
 Abraham & Khan (2019, "A Novel Focal Tversky Loss Function with Improved
 Attention U-Net for Lesion Segmentation", IEEE ISBI, arXiv:1810.07842), who
 combine the two specifically for small-lesion segmentation under class
 imbalance: the attention gates help the network find the small targets, and the
 focal Tversky loss penalises missing them. That is the same problem structure as
-sub-2 km crater detection under the roughly 37:1 rim-to-background imbalance,
+sub-2 km crater detection under the roughly 1:45 rim-to-background imbalance,
 which is why this combination is used here.
 
 The model exposes the same buildModel(params) interface as the other
-architectures in this project (model_v1 (Sofia Valente) and the DeepMoon
+architectures in this project (deep_U_net (Sofia Valente) and
 baseline) and reads the same shared parameters, so the training pipeline, data
 and loss are held constant and only the network differs between runs.
 
 Usage:
-    from model_v2 import buildModel
+    from dilated_U_net import buildModel
     model = buildModel(params)
 """
 
@@ -129,4 +130,4 @@ def buildModel(params):
     # output: 1x1 convolution, sigmoid, single channel (per-pixel rim probability)
     out = Conv2D(1, 1, activation='sigmoid')(x)
 
-    return keras.Model(inp, out, name='U-Net-v2-attention')
+    return keras.Model(inp, out, name='dilated_U_net')

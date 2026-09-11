@@ -47,7 +47,7 @@ params = {
     'focal_alpha': 0.75,
     'focal_gamma': 2.0,
     'focal_class_balancing': True,
-    'model': 'model_deepmoon',                # any model file in this folder
+    'model': 'baseline',                # baseline | deep_U_net (any model file in this folder)
     'seed': 42,
     'patience': 5,
     'queue': 64,
@@ -66,7 +66,7 @@ if params['channels'] == 'both':
 else:
     params['input_channels'] = 1
 
-if params['model'] == 'model_deepmoon':
+if params['model'] == 'baseline':
     params['n_filters'] = 112
 
 if params['loss'] == 'binary_focal_crossentropy':

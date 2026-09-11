@@ -1,6 +1,6 @@
-# [source]: N. Khedkar (project partner) - 4_training/sweep_v2.py
+# [source]: N. Khedkar (project partner) - 4_training/sweep_v2.py, renamed sweep_dilated_U_net.py
 
-# sweep_v2
+# sweep_dilated_U_net
 # runs the v2 experiments one after another, each logged to mlflow per epoch and
 # each writing its own checkpoint and history, so nothing overwrites anything
 # else. staged on purpose: stage 1 varies only the architecture at the baseline
@@ -33,8 +33,8 @@ from keras import ops
 
 from LRO_data_class import getSplitIndices
 from LRO_meemmap_class import MemmapPatchSequence
-from model_v2 import buildModel
-from losses_v2 import buildLoss
+from dilated_U_net import buildModel
+from losses import buildLoss
 
 
 # only change: 'stage' and 'stage1_winner'
@@ -55,7 +55,7 @@ params = {
     'focal_alpha': 0.75,
     'focal_gamma': 2.0,
     'focal_class_balancing': True,
-    'model': 'model_v2',
+    'model': 'dilated_U_net',
     'seed': 42,
     'patience': 5,
     'queue': 64,

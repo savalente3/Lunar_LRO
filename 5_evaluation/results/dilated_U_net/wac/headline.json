@@ -1,5 +1,5 @@
 {
-  "model": "model_v2att",
+  "model": "dilated_U_net",
   "run_name": "U-Net-v2-attention_focal_tversky_wac_32f_s42_10pct_256ppd",
   "channel": "wac",
   "best_threshold": 0.01,

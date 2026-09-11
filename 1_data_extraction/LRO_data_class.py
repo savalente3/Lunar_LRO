@@ -1,5 +1,4 @@
 import os
-import io
 import requests
 import rasterio
 import kagglehub
@@ -140,7 +139,7 @@ def getDEMLunarData(data_dir='../1_data_extraction/data'):
 #         dataframe, or None if the file does not exist
 def getFilteredLabels(path='../2_data_preparation/filtered_labels.csv'):
     if not os.path.exists(path):
-        print(f'filtered_labels.csv not found. Run smallLabelCraters.to_csv() in data_merge.ipynb first.')
+        print(f'{path} not found. Run 2_data_preparation/data_merge_alltiles.ipynb first.')
         return None
     
     return pd.read_csv(path)

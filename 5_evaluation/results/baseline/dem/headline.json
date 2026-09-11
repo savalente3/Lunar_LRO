@@ -1,5 +1,5 @@
 {
-  "model": "model_deepmoon",
+  "model": "baseline",
   "run_name": "model_deepmoon_dem_s42_10pct",
   "channel": "dem",
   "best_threshold": 0.4,

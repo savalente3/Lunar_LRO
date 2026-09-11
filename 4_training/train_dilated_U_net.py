@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Final Model V2 training run.
+train_dilated_U_net - final training run for the Dilated U-Net (dilated_U_net).
 
 Trains the attention-gated Model V2 at the same budget as the baseline models
 (10% of the training split, 15 epochs) so the result is directly comparable to
-model_v1 (Sofia Valente) and the DeepMoon baseline (Silburt et al. 2019). This
+the Deep U-Net (Sofia Valente) and the Baseline U-Net (Silburt et al. 2019). This
 script produces the model that is evaluated and reported.
 
-The architecture and its rationale are documented in model_v2: a depth-3 U-Net
+The architecture and its rationale are documented in dilated_U_net: a depth-3 U-Net
 with a dilated bottleneck and attention gates on every skip connection. The
 three mechanisms each target the small-crater recall limitation of the baseline
 models. Depth 3 keeps small craters resolvable rather than pooling them to
@@ -19,28 +19,29 @@ terrain, a mechanism shown to raise sensitivity to small structures at
 negligible cost (Oktay et al. 2018, arXiv:1804.03999; Schlemper et al. 2019).
 
 The loss is the focal Tversky loss (alpha 0.3, beta 0.7, gamma 1.333), defined
-in losses_v2. The Tversky loss penalises false negatives more heavily than false
+in losses. The Tversky loss penalises false negatives more heavily than false
 positives, biasing the model toward recall (Salehi, Erdogmus & Gholipour 2017,
 arXiv:1706.05721), and the focal exponent concentrates learning on the small,
 hard craters where recall is weakest. Pairing this loss with attention gates for
 small-target segmentation under class imbalance follows Abraham & Khan (2019,
 arXiv:1810.07842), whose problem structure - small targets, high imbalance -
-matches sub-2 km crater detection under the roughly 37:1 rim-to-background ratio.
+matches sub-2 km crater detection under the roughly 1:45 rim-to-background ratio.
 
-The input channel set is chosen by CHANNELS below: 'both' for WAC and DEM fusion
-or 'wac' for optical only. Run once per channel set to compare the two
-modalities under the same architecture and loss. The DEM resolution follows the
-project-wide DEM_PPD setting, so the run reads the patches for whichever
-resolution the pipeline is configured to.
+The input channel set is given on the command line: 'both' for WAC and DEM
+fusion, 'wac' for optical only or 'dem' for elevation only. Run once per channel
+set to compare the modalities under the same architecture and loss. The patches
+are the 256 ppd all-tiles set written by data_pre_processing_alltiles.ipynb.
 
 Uses the shared data loader and split utilities (LRO_meemmap_class and
-LRO_data_class (Sofia Valente)), the Model V2 architecture (model_v2) and the
-recall-oriented losses (losses_v2). MLflow logs parameters and per-epoch metrics
+LRO_data_class (Sofia Valente)), the Dilated U-Net architecture (dilated_U_net)
+and the recall-oriented losses (losses). MLflow logs parameters and per-epoch metrics
 only, with no artifact calls, so the run completes without depending on a
 writable artifact store.
 
-Usage:
-    python train_v2_final.py
+Usage (run from inside 4_training/):
+    python train_dilated_U_net.py both
+    python train_dilated_U_net.py wac
+    python train_dilated_U_net.py dem
 """
 
 import sys
@@ -54,24 +55,28 @@ import keras
 from keras import ops
 import tensorflow as tf
 
-from LRO_data_class import getSplitIndices, patchesDirName
+from LRO_data_class import getSplitIndices
 from LRO_meemmap_class import MemmapPatchSequence
-from model_v2 import buildModel
-from losses_v2 import build_loss
+from dilated_U_net import buildModel
+from losses import buildLoss
 
 
 # ---------------------------------------------------------------------------
 # configuration
 # ---------------------------------------------------------------------------
 
-# input modality: 'both' = WAC + DEM fusion, 'wac' = optical only.
+# input modality from the command line: 'both' = WAC + DEM fusion,
+# 'wac' = optical only, 'dem' = elevation only. defaults to 'both'.
 # run once per channel set (typically one per GPU) to compare the modalities.
-CHANNELS = 'both'
+CHANNELS = sys.argv[1] if len(sys.argv) > 1 else 'both'
+if CHANNELS not in ('both', 'wac', 'dem'):
+    sys.exit(f"channels must be 'both', 'wac' or 'dem', got {CHANNELS!r}")
 
 DATASET = 'alltiles'
-# patches directory follows the project-wide DEM_PPD resolution setting, so a
-# 256 ppd run reads its own patches and cannot silently use the 128 ppd set
-PATCHES_DIR = '../3_pre_processing/' + patchesDirName(DATASET)
+# the all-tiles patches at 256 ppd DEM resolution, as written by
+# 3_pre_processing/data_pre_processing_alltiles.ipynb
+PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
+RES_TAG = '256ppd'
 CKPT_DIR = 'checkpoints'
 
 SEED = 42
@@ -93,8 +98,8 @@ params = {
     'patience': 5,
     'queue': 64,
     'training_sample_percentage': 10,
-    'model': 'U-Net-v2-attention',
-    # loss: focal Tversky, recall-oriented (see losses_v2)
+    'model': 'dilated_U_net',
+    # loss: focal Tversky, recall-oriented (see losses)
     'loss': 'focal_tversky',
     'tversky_alpha': 0.3,
     'tversky_beta': 0.7,
@@ -160,7 +165,7 @@ def main():
 
     model = buildModel(params)
     model.compile(optimizer=keras.optimizers.Adam(params['learning_rate']),
-                  loss=build_loss(params),
+                  loss=buildLoss(params),
                   metrics=[dice_coef, soft_recall])
     model.summary()
 
@@ -168,9 +173,8 @@ def main():
 
     # run_name records the model, loss, channel set and resolution, so the
     # checkpoint and its later evaluation refer to the same configuration
-    res_tag = patchesDirName(DATASET).replace('lunar_patches_alltiles', '').lstrip('_') or '128ppd'
     run_name = (f"{params['model']}_{params['loss']}_{params['channels']}_"
-                f"{params['n_filters']}f_s{params['seed']}_{pct}pct_{res_tag}")
+                f"{params['n_filters']}f_s{params['seed']}_{pct}pct_{RES_TAG}")
     print('run_name:', run_name, flush=True)
 
     callbacks = [

@@ -1,8 +1,8 @@
-# [source]: N. Khedkar (project partner) - 4_training/model_deepmoon.py
+# [source]: N. Khedkar (project partner) - 4_training/model_deepmoon.py, renamed baseline.py
 # [source]: Silburt et al. (2019) - paper 2.3 and 2.7
 # [example source]: https://github.com/silburt/DeepMoon - unet_model.py
 
-# model_deepmoon
+# baseline
 # the DeepMoon network as published: 3 contracting blocks, a connecting path and
 # 3 expansive blocks, upsampling rather than transposed convolution, and dropout
 # after each merge. same buildModel(params) interface as the other model files,
@@ -94,4 +94,4 @@ def buildModel(params):
     # Output layer
     output = Conv2D(1, 1, activation='sigmoid')(d3)
 
-    return keras.Model(img_input, output, name='DeepMoon-paper')
+    return keras.Model(img_input, output, name='baseline')

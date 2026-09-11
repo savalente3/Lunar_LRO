@@ -1,5 +1,5 @@
 {
-  "model": "model_deepmoon",
+  "model": "baseline",
   "run_name": "model_deepmoon_wac_s42_10pct",
   "channel": "wac",
   "best_threshold": 0.4,

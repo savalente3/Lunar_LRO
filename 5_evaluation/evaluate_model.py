@@ -8,7 +8,7 @@
 # and every model in the report is evaluated through this one script so the
 # figures and tables are drawn from identical numbers.
 # parameters:
-#         argv[1]: results directory name, for example model_v2att
+#         argv[1]: results directory name, baseline | deep_U_net | dilated_U_net
 #         argv[2]: both | wac | dem
 #         argv[3]: checkpoint path, optional for the runs listed in DEFAULT_RUNS
 # outputs:
@@ -37,11 +37,19 @@ from LRO_data_class import getSplitIndices, percentileNormalise, getLunarRobbins
 # checkpoint name templates for the runs this project reports, so the common
 # case needs no path on the command line. anything not listed here is passed as
 # argv[3]. {channel} is substituted.
-# 'model_v2att': 'U-Net-v2-attention_focal_tversky_{channel}_32f_s42_10pct_256ppd',
 
 DEFAULT_RUNS = {
-    'model_deepmoon': 'model_deepmoon_{channel}_s42_10pct',
-    'U_Net_v1': 'U_Net_v1_{channel}_s42_10pct',
+    'baseline': 'baseline_{channel}_s42_10pct',
+    'deep_U_net': 'deep_U_net_{channel}_s42_10pct',
+    'dilated_U_net': 'dilated_U_net_focal_tversky_{channel}_32f_s42_10pct_256ppd',
+}
+
+# the reported checkpoints were trained before the models were renamed, so they
+# carry the old run names. these are tried when the new name is not on disk.
+LEGACY_RUNS = {
+    'baseline': 'model_deepmoon_{channel}_s42_10pct',
+    'deep_U_net': 'U_Net_v1_{channel}_s42_10pct',
+    'dilated_U_net': 'U-Net-v2-attention_focal_tversky_{channel}_32f_s42_10pct_256ppd',
 }
 
 MODEL = sys.argv[1]
@@ -53,6 +61,10 @@ if len(sys.argv) > 3:
 else:
     RUN_NAME = DEFAULT_RUNS[MODEL].format(channel=CHANNEL)
     CHECKPOINT = os.path.join('../4_training/checkpoints', f'{RUN_NAME}.keras')
+    legacy_name = LEGACY_RUNS[MODEL].format(channel=CHANNEL)
+    legacy_path = os.path.join('../4_training/checkpoints', f'{legacy_name}.keras')
+    if not os.path.exists(CHECKPOINT) and os.path.exists(legacy_path):
+        RUN_NAME, CHECKPOINT = legacy_name, legacy_path
 
 PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
 LABELS_CSV = '../2_data_preparation/filtered_labels_alltiles.csv'
@@ -296,7 +308,7 @@ def sweepThresholds(model, channel):
         swept_detected = 0
         swept_truth = 0
 
-        for prediction, truth, true_rim, large in zip(predictions, truths, masks, larges):
+        for prediction, truth, _, large in zip(predictions, truths, masks, larges):
 
             detections = filter_edge_craters(template_match_t(prediction.copy(), target_thresh=threshold))
             match_count, detection_count, truth_count, _, false_positives, _ = match_coords(truth, detections)
@@ -472,7 +484,7 @@ def perPatchStats(per_patch):
 
 # perBandStats
 # precision and recall split by the diameter bands the report compares against
-# model_v1 (Sofia Valente). radii are in pixels at 100 m/px.
+# deep_U_net (Sofia Valente). radii are in pixels at 100 m/px.
 # parameters:
 #         arrays: the arrays dict from evaluateChannel
 # outputs:

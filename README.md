@@ -1,161 +1,186 @@
-# LRO Crater Classifier — Setup Guide
+# Small Lunar Crater Detection with U-Nets — WAC, DEM and Fused Inputs
 
-## Project Structure
+Code for the MSc Machine Learning in Science project that detects lunar impact
+craters between 1 and 10 km in diameter. Three U-Net architectures are each
+trained on three inputs — LRO WAC optical imagery, SLDEM2015 elevation (DEM) and
+the two fused — giving a 3 × 3 grid of nine runs. Every run is evaluated with the
+same crater-extraction and matching code against the Robbins (2019) catalogue.
+
+| Model (code name) | Name in the report | F1, WAC / DEM / WAC + DEM |
+|---|---|---|
+| `baseline` | Baseline U-Net | 0.512 / 0.482 / 0.516 |
+| `deep_U_net` | Deep U-Net | 0.517 / 0.464 / 0.519 |
+| `dilated_U_net` | Dilated U-Net | 0.717 / 0.715 / 0.722 |
+
+Test set: 2,000 patches, 42,288 catalogued craters. Full metrics are in
+`5_evaluation/results/comparison/summary.csv`.
+
+---
+
+## Repository structure
 
 ```
 Lunar_LRO/
 ├── 1_data_extraction/
-│   ├── LRO_data_class.py              # LunarDataset class and data loading utilities
-│   ├── DEM_data_analysis.ipynb        # EDA on global LOLA DEM (elevation distribution, image quality)
-│   ├── Regional_tiles_analysis.ipynb  # Analysis of regional WAC tiles
-│   ├── Robbins_labels_analysis.ipynb  # Analysis of Robbins catalogue structure and crater size distributions
-│   └── wac_tile_grid.png              # WAC tile grid reference image
+│   ├── LRO_data_class.py                   # shared data utilities: WAC/DEM/Robbins loaders, split indices,
+│   │                                       #   normalisation, augmentation, ring-mask generation
+│   ├── DEM_data_analysis.ipynb             # exploratory analysis of SLDEM2015
+│   ├── Regional_tiles_analysis.ipynb       # exploratory analysis of the 8 WAC tiles
+│   ├── Robbins_labels_analysis.ipynb       # exploratory analysis of the Robbins catalogue
+│   └── wac_tile_grid.png                   # WAC tile grid reference
 ├── 2_data_preparation/
-│   ├── data_merge.ipynb               # Merges DEM data and Robbins labels — single tile (E300N1350)
-│   └── data_merge_alltiles.ipynb      # Same, widened to all 8 WAC tiles (full 60°S–60°N band)
+│   └── data_merge_alltiles.ipynb           # filters Robbins (D < 10 km, ARC_IMG > 0.5, 60°S–60°N) and assigns
+│                                           #   craters to tiles -> filtered_labels_alltiles.csv
 ├── 3_pre_processing/
-│   ├── data_pre_processing.ipynb            # Patch extraction + mask generation — single tile
-│   └── data_pre_processing_alltiles.ipynb   # Same, looped over all 8 tiles - the live pipeline
+│   └── data_pre_processing_alltiles.ipynb  # patch extraction, ring masks and longitude split for all 8 tiles
+│                                           #   -> lunar_patches_alltiles/
 ├── 4_training/
-│   ├── train.py                       # Trains one model (architecture x channels) on the memory-mapped patches, MLflow logging
-│   ├── U_Net_v1.py                    # Proposed architecture - 4 levels, 32 -> 512, uncompiled builder
-│   ├── model_deepmoon.py              # DeepMoon architecture as published (Silburt et al. 2019) - 3 contracting/3 expansive blocks, uncompiled builder
-│   ├── model_v2.py                    # U-Net variant targeting sub-2km craters - configurable depth, optional dilated bottleneck and attention gates
-│   ├── losses_v2.py                   # Recall-oriented losses (Tversky, focal Tversky) alongside focal cross-entropy
-│   ├── LRO_meemmap_class.py           # Converts patch .npz batches to memory-mapped .npy for GPU streaming, and the Keras PyDataset sequence over them
-│   ├── sweep_v2.py                    # Staged architecture/loss sweep for model_v2, each run logged to MLflow
-│   ├── combine_csvs.py                # Combines per-run history CSVs in checkpoints/ into one table
-│   ├── checkpoints/                   # Saved model weights, per-run training histories and params, per training run
-│   ├── mlruns/                        # MLflow experiment tracking data
-│   └── log_train_*.txt                # Captured stdout logs from training runs
+│   ├── baseline.py                         # Baseline U-Net (DeepMoon architecture, Silburt et al. 2019)
+│   ├── deep_U_net.py                       # Deep U-Net (4 levels, 32 -> 512 filters)
+│   ├── dilated_U_net.py                    # Dilated U-Net (3 levels, dilated bottleneck, attention gates)
+│   ├── losses.py                           # focal cross-entropy, Tversky and focal Tversky losses
+│   ├── LRO_meemmap_class.py                # builds float16 memmaps from the patches; Keras PyDataset over them
+│   ├── train.py                            # trains baseline or deep_U_net (focal cross-entropy), logs to MLflow
+│   ├── train_dilated_U_net.py              # trains dilated_U_net (focal Tversky), channel given on the command line
+│   ├── sweep_dilated_U_net.py              # staged architecture / loss screening for the Dilated U-Net
+│   ├── combine_csvs.py                     # merges per-run training histories into checkpoints/all_histories.csv
+│   └── checkpoints/all_histories.csv       # per-epoch training history of every run
 ├── 5_evaluation/
-│   ├── crater_extraction.py           # Template matching and ground-truth matching for crater-level evaluation
-│   ├── evaluation.ipynb               # Loads a saved checkpoint, computes threshold sweep, crater- and pixel-level metrics, and channel comparisons
-│   ├── run_eval.py                    # Executes evaluation.ipynb end-to-end and writes the outputs back into it
-│   └── results/                       # Saved metrics tables and figures per model/channel configuration
-├── environment.yml                    # Conda environment
-└── README.md                          # This file
+│   ├── crater_extraction.py                # template matching and catalogue matching (adapted from DeepMoon)
+│   ├── evaluate_model.py                   # evaluates one checkpoint: threshold sweep on validation, metrics on test
+│   ├── compare_models.py                   # comparison figures and summary.csv across all evaluated runs
+│   ├── evaluation.ipynb                    # original interactive evaluation notebook (metric definitions)
+│   └── results/
+│       ├── baseline/{wac,dem,both}/        # headline.json, sweep.csv, per_patch.csv, arrays.npz, labelled_*.png
+│       ├── deep_U_net/{wac,dem,both}/
+│       ├── dilated_U_net/{wac,dem,both}/
+│       └── comparison/                     # summary.csv and comparison figures
+├── archive/                                # superseded files kept for the record (see archive/README.md)
+├── environment.yml
+└── README.md
 ```
 
-`filtered_labels.csv` / `filtered_labels_alltiles.csv` are generated by the merge notebooks (`data_merge.ipynb` / `data_merge_alltiles.ipynb`) and are gitignored, not committed — the full-band version alone is ~180MB, over GitHub's 100MB file limit, and both regenerate from the Robbins catalogue in seconds with no raster downloads. Run the relevant merge notebook once locally before running the matching pre-processing notebook.
+**Run every script and notebook from inside its own folder.** Paths are relative
+(`../1_data_extraction`, `../3_pre_processing/...`), so `cd 4_training` before
+`python train.py`, and so on.
+
+### What is not included
+
+These are too large for the repository and are regenerated by the pipeline:
+
+| Item | Size | Produced by |
+|---|---|---|
+| WAC tiles and SLDEM2015 (`1_data_extraction/data/`) | ~4.5 GB per WAC tile, ~11 GB DEM | downloaded automatically on first use |
+| `2_data_preparation/filtered_labels_alltiles.csv` | ~180 MB | `data_merge_alltiles.ipynb` |
+| `3_pre_processing/lunar_patches_alltiles/` | 1,226,971 patches | `data_pre_processing_alltiles.ipynb` |
+| `4_training/checkpoints/*.keras` | per run | the training scripts |
+| `4_training/mlruns/`, `log_train_*.txt` | — | MLflow and training stdout |
 
 ---
 
-## 1. Conda Environment
+## Reproducing the results
 
-All dependencies are managed via `environment.yml`. To set up the environment:
+### 1. Environment
 
 ```bash
 conda env create -f environment.yml
 conda activate lunar_lro
 ```
 
-This project runs on three machines (Mac, Windows, Linux) sharing one `environment.yml`, so it has to stay cross-platform. **Do not** regenerate it with a plain `conda env export > environment.yml` — that bakes in OS-specific build hashes (e.g. macOS's `libcxx`, which doesn't exist on Linux/Windows at all) and an absolute `prefix:` path, breaking the file on every other machine. This happened once already and cost real time to undo.
+`tensorflow==2.16.2` is pinned on purpose: it is the newest version with wheels
+for all three machines the project ran on (Intel macOS, Windows, Linux). `mlflow`
+is pinned to 2.x because 3.x conflicts with the protobuf version TensorFlow needs.
+Do not regenerate `environment.yml` with a plain `conda env export`, which bakes in
+OS-specific build hashes; add packages to the `pip:` list by hand.
 
-If you add a package, add it by hand to the `pip:` list in `environment.yml` (name + version, no build hash), or use `conda env export --from-history` for the top-level `dependencies:` block only — never the full export.
+### 2. Data
 
-Key packages installed:
-- `pandas` — data wrangling
-- `numpy` — numerical operations and array handling
-- `rasterio` — reading PDS `.IMG` files from LROC and LOLA
-- `kagglehub` — fetching the Robbins catalogue
-- `tensorflow` / `keras` — model building and training (U-Net)
-- `scikit-learn` — ML utilities (metrics, preprocessing)
-- `mlflow` — experiment tracking (pinned to the 2.x line — 3.x made OpenTelemetry tracing a hard dependency, which conflicts with the protobuf version tensorflow needs)
-- `opencv-python` — image resizing in the pre-processing pipeline, and template construction for crater matching in evaluation
-- `scikit-image` — drawing crater rim masks, and template matching for crater extraction (`skimage.feature.match_template`)
-- `matplotlib` / `seaborn` — visualisation
-- `pillow` — image I/O
-- `nbimporter` — importing functions across notebooks
+All three sources download on first use through `1_data_extraction/LRO_data_class.py`:
 
-**`tensorflow==2.16.2` is pinned deliberately, not just "the version that happened to work."** TensorFlow 2.17+ dropped Intel macOS wheels from PyPI entirely — 2.16.2 is the newest version installable on all three project machines. Don't let a future `pip install --upgrade tensorflow` bump this.
+- **Robbins (2019) crater catalogue** — via `kagglehub`
+  (`sujaykapadnis/moon-crater-database-v1-robbins`). Needs a Kaggle API token:
+  ```bash
+  mkdir -p ~/.kaggle
+  echo 'YOUR_KAGGLE_API_TOKEN' > ~/.kaggle/access_token
+  chmod 600 ~/.kaggle/access_token
+  ```
+- **SLDEM2015 DEM** — `SLDEM2015_256_60S_60N_000_360_FLOAT.IMG` from
+  `imbrium.mit.edu`, 256 px/degree (~118 m/px), 60°S–60°N. A raw float32 array
+  (30,720 × 92,160, elevation in km), memory-mapped rather than loaded.
+- **LRO WAC mosaic** — the eight `WAC_GLOBAL_E300{N,S}{0450,1350,2250,3150}_100M.IMG`
+  tiles from the LROC PDS archive, 100 m/px, float32 reflectance.
 
----
+### 3. Labels
 
-## 2. Kaggle API Key (Robbins Crater Catalogue)
+Run `2_data_preparation/data_merge_alltiles.ipynb`. It keeps craters with
+diameter < 10 km and more than half of the rim traced (`ARC_IMG > 0.5`) within
+60°S–60°N, and writes `filtered_labels_alltiles.csv` (1,007,519 craters).
 
-An API token can be generated at [kaggle.com/settings](https://kaggle.com/settings) → **API Tokens → Generate New Token**
+### 4. Patches
 
-```bash
-mkdir -p ~/.kaggle
-echo 'YOUR_KAGGLE_API_TOKEN' > ~/.kaggle/access_token
-chmod 600 ~/.kaggle/access_token
-```
+Run `3_pre_processing/data_pre_processing_alltiles.ipynb`. For each tile it
+extracts 256 × 256 WAC and DEM patches (crater-centred with a ±100 px offset,
+plus 25 % random background patches), widens the east–west window by 1/cos(latitude),
+draws 1-px ring masks, and writes compressed batches of 1,000 to
+`lunar_patches_alltiles/` with `kept_labels.csv` and the longitude split
+(train 0–252°E, validation 252–306°E, test 306–360°E).
 
-The Robbins catalogue is fetched using `kagglehub`:
+### 5. Training
 
-```python
-import kagglehub
-from kagglehub import KaggleDatasetAdapter
-
-kagglehub.dataset_load(
-    KaggleDatasetAdapter.PANDAS,
-    "sujaykapadnis/moon-crater-database-v1-robbins",
-    "lunar_crater_database_robbins_2018.csv",
-)
-```
-
-Note: use `dataset_load()` not `load_dataset()` — the latter is deprecated.
-
----
-
-## 3. Primary Image Source — LOLA DEM (SLDEM2015)
-
-The model is trained on SLDEM2015 digital elevation data (a hybrid LOLA + Kaguya product). DEMs are illumination-invariant — crater shape reads the same regardless of sun angle, which is why DEM is used in every training configuration: alone as the baseline, and fused with WAC as the default multi-modal input (see Section 4). See `NOTE_Synthesis — Data and Labels Strategy` in the Literature folder for the rationale.
-
-The global DEM (60°S–60°N, 128 px/degree) is loaded in-memory — no API key required. The file is a raw binary float array with no format header, so it is read with NumPy rather than rasterio:
-
-```python
-import requests
-import numpy as np
-
-url = "http://imbrium.mit.edu/DATA/SLDEM2015/GLOBAL/FLOAT_IMG/SLDEM2015_128_60S_60N_000_360_FLOAT.IMG"
-
-response = requests.get(url, allow_redirects=True)
-data = np.frombuffer(response.content, dtype=np.float32).reshape(15360, 46080)
-```
-
----
-
-## 4. WAC Optical Imagery
-
-WAC optical imagery is used for visualisation, and as the second input channel in the default multi-modal model (`4_training/train.py`, `channels='both'`), fused with the DEM. WAC is illumination-dependent — crater appearance changes with sun angle — which is why a DEM-only configuration (`channels='dem'`) is also kept as an illumination-invariant baseline for comparison.
-
-WAC tiles are loaded in-memory from the LROC PDS server — no API key required:
-
-```python
-import requests, rasterio, io
-
-url = "https://pds.lroc.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_GLOBAL/WAC_GLOBAL_E300N1350_100M.IMG"
-
-response = requests.get(url)
-with rasterio.open(io.BytesIO(response.content)) as src:
-    data = src.read(1)
-```
-
-Available resolutions:
-
-| File suffix | Resolution | File size |
-|---|---|---|
-| `004P` | lowest | 828 KB |
-| `008P` | | 3.2 MB |
-| `016P` | | 13 MB |
-| `032P` | | 51 MB |
-| `064P` | | 205 MB |
-| `100M` | highest | 4.5 GB |
-
-Use `004P` for development; the regional tile used in the pipeline is `100M`.
-
----
-
----
-
-## 5. MLflow Experiment Tracking
-
-MLflow logs hyperparameters and results for every training run. To view results:
+All runs use seed 42, a 10 % subsample of the training and validation splits,
+batch size 8, Adam (1e-4) and at most 15 epochs. `train.py` builds the float16
+memmaps (`wac_all.npy`, `dem_all.npy`, `mask_all.npy`) from the patches on its first
+run; run it once before `train_dilated_U_net.py` or `sweep_dilated_U_net.py`, which
+expect the memmaps to exist.
 
 ```bash
-mlflow ui
+cd 4_training
+
+# Baseline U-Net and Deep U-Net: set params['model'] ('baseline' | 'deep_U_net')
+# and params['channels'] ('wac' | 'dem' | 'both') at the top of train.py, then
+python train.py
+
+# Dilated U-Net, one run per input
+python train_dilated_U_net.py wac
+python train_dilated_U_net.py dem
+python train_dilated_U_net.py both
+
+python combine_csvs.py          # optional: refresh checkpoints/all_histories.csv
 ```
 
-Then open `localhost:5000` in the browser. Training runs are logged from `4_training/train.py` (single runs) and `4_training/sweep_v2.py` (staged architecture/loss sweeps).
+Checkpoints are written to `4_training/checkpoints/<run_name>.keras` and runs are
+logged to MLflow; view them with `mlflow ui` from inside `4_training/`.
+
+### 6. Evaluation
+
+```bash
+cd 5_evaluation
+python evaluate_model.py baseline both          # model: baseline | deep_U_net | dilated_U_net
+python evaluate_model.py dilated_U_net dem      # channel: wac | dem | both
+python evaluate_model.py deep_U_net wac path/to/checkpoint.keras   # explicit checkpoint
+python compare_models.py                        # rebuilds results/comparison/
+```
+
+`evaluate_model.py` sweeps the detection threshold on 200 validation patches,
+applies the best one to 2,000 test patches, and writes `results/<model>/<channel>/`.
+`compare_models.py` reads only those saved results, so it runs without the data
+or checkpoints.
+
+**Checkpoint names.** The reported checkpoints were trained before the models were
+renamed, so their files carry the old run names (`model_deepmoon_*`, `U_Net_v1_*`,
+`U-Net-v2-attention_*`). `evaluate_model.py` falls back to these names
+automatically, and `run_name` in each `headline.json` records the checkpoint used.
+
+---
+
+## Credits
+
+- Each file header credits where its code came from with a `[source]:` line.
+  Files marked `[source]: N. Khedkar (project partner)` come from the project
+  partner (`baseline.py`, `losses.py`, `sweep_dilated_U_net.py`, `combine_csvs.py`,
+  `LRO_meemmap_class.py`).
+- The Baseline U-Net architecture and the crater extraction in
+  `crater_extraction.py` are adapted from DeepMoon
+  (Silburt et al. 2019, https://github.com/silburt/DeepMoon).
+- Tversky and focal Tversky losses follow Salehi et al. (2017) and Abraham and
+  Khan (2019).

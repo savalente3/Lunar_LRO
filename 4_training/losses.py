@@ -1,8 +1,8 @@
-# [source]: N. Khedkar (project partner) - 4_training/losses_v2.py
+# [source]: N. Khedkar (project partner) - 4_training/losses_v2.py, renamed losses.py
 # [source]: Salehi, Erdogmus and Gholipour (2017) - Tversky loss, arXiv:1706.05721
 # [source]: Abraham and Khan (2019) - focal Tversky loss, arXiv:1810.07842
 
-# losses_v2
+# losses
 # recall oriented losses. focal cross entropy weights examples by confidence but
 # treats a false positive and a false negative the same, so it gives no handle on
 # the recall limit. Tversky penalises the two separately, which does.
