@@ -3,7 +3,7 @@
 # set 'model' and 'channels' in params below, everything else follows from them.
 # parameters:
 #         dataset: 'single' | 'alltiles'
-#         model: any model file in this folder
+#         model: baseline | deep_U_net
 #         channels: 'both' | 'wac' | 'dem'
 #         loss: 'binary_focal_crossentropy' or any keras loss name
 #         training_sample_percentage: % of each split, None uses the whole split
@@ -47,14 +47,14 @@ params = {
     'focal_alpha': 0.75,
     'focal_gamma': 2.0,
     'focal_class_balancing': True,
-    'model': 'baseline',                # baseline | deep_U_net (any model file in this folder)
+    'model': 'baseline',                # 'baseline' | 'deep_U_net'
     'seed': 42,
     'patience': 5,
     'queue': 64,
     'training_sample_percentage': 10,   # % of each split
 }
 
-# Parameter contrlos
+# everything below follows from params
 if params['dataset'] == 'single':
     PATCHES_DIR = '../3_pre_processing/lunar_patches'
 else:
@@ -66,6 +66,7 @@ if params['channels'] == 'both':
 else:
     params['input_channels'] = 1
 
+# the baseline keeps DeepMoon's 112 base filters
 if params['model'] == 'baseline':
     params['n_filters'] = 112
 
@@ -88,6 +89,7 @@ keras.utils.set_random_seed(params['seed'])
 print(tf.config.list_physical_devices('GPU'))
 
 
+# the memmaps are built once, on the first run
 if not os.path.exists(os.path.join(PATCHES_DIR, 'wac_all.npy')):
     print('memmaps not found - building them', flush=True)
     buildMemmaps(PATCHES_DIR)
@@ -161,7 +163,7 @@ with open(f'checkpoints/{run_name}_params.json', 'w') as f:
     json.dump(params, f, indent=2)
 
 
-# [sorce]: https://mlflow.org/docs/latest/python_api/mlflow.keras.html
+# [source]: https://mlflow.org/docs/latest/python_api/mlflow.keras.html
 # [example source]: https://github.com/mlflow/mlflow/blob/master/examples/keras/train.py
 
 mlflow.set_tracking_uri('mlruns')

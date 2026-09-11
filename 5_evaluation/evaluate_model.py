@@ -1,14 +1,11 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 # evaluate_model
 # evaluates one trained checkpoint on the held out test split, sweeping the
 # detection threshold on validation and applying it once to test. metric
-# definitions and the results layout follow evaluation.ipynb (Sofia Valente),
-# and every model in the report is evaluated through this one script so the
-# figures and tables are drawn from identical numbers.
+# definitions and the results layout follow evaluation.ipynb, and every model in
+# the report is evaluated through this one script so the figures and tables are
+# drawn from identical numbers.
 # parameters:
-#         argv[1]: results directory name, baseline | deep_U_net | dilated_U_net
+#         argv[1]: baseline | deep_U_net | dilated_U_net
 #         argv[2]: both | wac | dem
 #         argv[3]: checkpoint path, optional for the runs listed in DEFAULT_RUNS
 # outputs:
@@ -37,7 +34,6 @@ from LRO_data_class import getSplitIndices, percentileNormalise, getLunarRobbins
 # checkpoint name templates for the runs this project reports, so the common
 # case needs no path on the command line. anything not listed here is passed as
 # argv[3]. {channel} is substituted.
-
 DEFAULT_RUNS = {
     'baseline': 'baseline_{channel}_s42_10pct',
     'deep_U_net': 'deep_U_net_{channel}_s42_10pct',
@@ -94,6 +90,8 @@ mlflow.set_tracking_uri('../4_training/mlruns')
 mlflow.set_experiment('lunar-crater-detection')
 
 
+# per tile linear fit from lon/lat to tile pixels, applied to the filtered labels
+# and to the catalogue craters of 10 km or more
 if 'tile' not in kept_labels.columns:
     kept_labels['tile'] = 'single'
 
@@ -138,10 +136,9 @@ def stackOrEmpty(parts, columns):
     return np.vstack(parts) if parts else np.empty((0, columns))
 
 
-# convert_to_memmap.py already applied the same percentileNormalise before
-# writing these, so the memmap path must not normalise again. it also indexes
-# flat, since the three arrays hold every patch rather than 1000 per file.
-
+# buildMemmaps in LRO_meemmap_class.py already applied percentileNormalise when
+# writing these, so the memmap path does not normalise again. it indexes flat,
+# since the three arrays hold every patch rather than 1000 per file.
 if params['patch_source'] == 'memmap':
     wac_all = np.load(os.path.join(PATCHES_DIR, 'wac_all.npy'), mmap_mode='r')
     dem_all = np.load(os.path.join(PATCHES_DIR, 'dem_all.npy'), mmap_mode='r')
@@ -156,6 +153,8 @@ loaded = {}
 # from the same file are not reloaded.
 # parameters:
 #         patch_idx: global patch index
+# outputs:
+#         none, the batch is held in loaded
 def loadPatchFile(patch_idx):
     file_num = int(patch_idx // 1000)
 
@@ -263,15 +262,10 @@ def patchLarge(patch_idx):
     return truth_coords_for_patch(row['center_col'], row['center_row'], row['patch_lat'], large_col, large_row, large_diameters, margin=600)
 
 
-# the grid inherited from evaluation.ipynb (Sofia Valente) ran 0.05 to 0.7 and
-# suits a model trained with cross entropy, whose rim probabilities concentrate
-# near zero on a rim class of roughly 2.6 percent of pixels. a Tversky loss
-# optimises a set overlap ratio rather than a per pixel likelihood, so a model
-# trained with it is not driven towards calibrated probabilities and its rim
-# map occupies a different and narrower range. the grid therefore runs from
-# 0.01 to 0.90, finely at the low end where the Tversky trained models settle
-# and at 0.05 steps above, so no model's optimum falls outside it. the same
-# grid is used for every model so the operating points stay comparable.
+# [source]: Mukhoti et al. (2020) - focal losses change the spread of predicted probabilities
+# threshold grid shared by every model. the focal Tversky runs put their rim
+# probabilities in a different range from the cross entropy runs, so the grid
+# steps by 0.01 below 0.05 and runs up to 0.90, keeping every optimum inside it.
 thresholds = [0.01, 0.02, 0.03, 0.04] + [round(0.05 * n, 2) for n in range(1, 19)]
 
 
@@ -332,10 +326,8 @@ def sweepThresholds(model, channel):
     sweep_table = pd.DataFrame(rows)
     best_threshold = sweep_table.loc[sweep_table['f1'].idxmax(), 'threshold']
 
-    # an optimum sitting on either end of the grid means the search was
-    # truncated rather than resolved, and the reported operating point is an
-    # artefact of the range. it is recorded so the run can be discounted
-    # instead of quoted.
+    # an optimum on either end of the grid means the search was cut short, so it
+    # is flagged in the results
     at_edge = best_threshold in (thresholds[0], thresholds[-1])
 
     if at_edge:
@@ -459,6 +451,7 @@ def evaluateChannel(model, channel, best_threshold):
     return headline, arrays
 
 
+# [source]: Silburt et al. (2019) - per image mean and standard deviation of precision and recall
 # perPatchStats
 # turns the per patch counts into means and standard deviations, the estimator
 # DeepMoon reports.
@@ -483,8 +476,8 @@ def perPatchStats(per_patch):
 
 
 # perBandStats
-# precision and recall split by the diameter bands the report compares against
-# deep_U_net (Sofia Valente). radii are in pixels at 100 m/px.
+# precision and recall in the 1-2, 2-5 and 5-10 km diameter bands. radii are in
+# pixels at 100 m/px.
 # parameters:
 #         arrays: the arrays dict from evaluateChannel
 # outputs:
@@ -514,9 +507,8 @@ def perBandStats(arrays):
     return {'bins': bin_labels, 'recall': recall, 'precision': precision}
 
 
-# the checkpoint was trained with focal tversky, a custom loss that is not
-# registered on load. compile=False skips the optimiser and loss rebuild, which
-# inference does not need.
+# compile=False skips rebuilding the loss, since focal Tversky is a custom loss
+# that is not registered on load and inference does not need it
 print(f'loading {CHECKPOINT}', flush=True)
 model = keras.models.load_model(CHECKPOINT, compile=False)
 
@@ -535,8 +527,8 @@ arrays['per_patch'].to_csv(os.path.join(RESULTS_DIR, 'per_patch.csv'), index=Fal
 with open(os.path.join(RESULTS_DIR, 'headline.json'), 'w') as handle:
     json.dump(headline, handle, indent=2)
 
-# the raw match arrays are kept so compare_models.py can redraw the shared
-# figures across models and channels without re-running inference.
+# the raw match arrays are kept so compare_models.py can redraw the figures
+# without re-running inference
 np.savez_compressed(
     os.path.join(RESULTS_DIR, 'arrays.npz'),
     matched=arrays['matched'],
@@ -553,15 +545,9 @@ with mlflow.start_run(run_name=f'eval-{RUN_NAME}'):
     mlflow.log_metrics({k: v for k, v in headline.items() if isinstance(v, (int, float))})
 
 
-# labelled crater figures
-#
-# circles are drawn in patch pixel coordinates, the same frame the model works
-# in. patchTruth maps Robbins lon/lat to tile pixels with a per tile linear fit,
-# truth_coords_for_patch subtracts the patch origin and applies the cos(lat)
-# correction, template_match_t returns detections in the same frame, and
-# match_coords pairs the two. diameter shown is 2 * radius * 0.1 km, since
-# 1 px = 100 m.
-
+# labelled crater figures, drawn in patch pixel coordinates, the frame both the
+# catalogue craters and the detections are in. diameters are 2 * radius * 0.1 km,
+# since 1 px = 100 m.
 
 # classifyPatch
 # splits one patch's craters into matched, missed and extra, plus the ones
@@ -601,6 +587,8 @@ def classifyPatch(patch_idx):
 #         colour: circle colour
 #         tag: label prefix, for example TP
 #         style: line style, default solid
+# outputs:
+#         none, the circles are drawn on ax
 def drawLabelled(ax, craters, colour, tag, style='-'):
 
     for n, crater in enumerate(craters, 1):
@@ -619,6 +607,8 @@ def drawLabelled(ax, craters, colour, tag, style='-'):
 # parameters:
 #         patch_idx: global patch index
 #         save_as: destination png path
+# outputs:
+#         none, the figure is saved to save_as
 def labelledFigure(patch_idx, save_as):
 
     prediction, matched_pairs, missed, false_positives, excluded = classifyPatch(patch_idx)
@@ -657,6 +647,7 @@ def labelledFigure(patch_idx, save_as):
     plt.close(fig)
 
 
+# the three densest of the first 60 test patches
 show_patches = sorted(test_idx[:60], key=lambda i: len(patchTruth(int(i))), reverse=True)[:3]
 
 for n, patch_idx in enumerate(show_patches, 1):

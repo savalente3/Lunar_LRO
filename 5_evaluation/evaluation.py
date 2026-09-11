@@ -1,10 +1,12 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# # Evaluation
-
-# In[ ]:
-
+# evaluation
+# script export of evaluation.ipynb, the original evaluation notebook. evaluates
+# every channel of one model, sweeping the threshold on validation and scoring
+# the test split. evaluate_model.py replaced it for the results in the report.
+# run as a notebook, since it calls display().
+# parameters:
+#         none, set 'model' in params below
+# outputs:
+#         results/<model>/ tables and figures
 
 import sys
 sys.path.append('../1_data_extraction')
@@ -23,25 +25,19 @@ from crater_extraction import template_match_t, match_coords, filter_to_detectab
 from LRO_data_class import getSplitIndices, percentileNormalise, getLunarRobbinsLabels
 
 
-# In[ ]:
-
-
 # only change: 'model'
 channels = ['wac', 'dem', 'both']
 
 params = {
     'dataset': 'alltiles',              # 'single' | 'alltiles'
     'patch_source': 'memmap',           # 'memmap' | 'npz'
-    'model': 'U_Net_v1',                # any model file in 4_training
+    'model': 'deep_U_net',              # baseline | deep_U_net | dilated_U_net
     'n_filters': 32,
     'seed': 42,
     'training_sample_percentage': 10,   # % of each split
     'n_sweep': 200,
     'n_eval': 2000,
 }
-
-
-# In[ ]:
 
 
 PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
@@ -61,9 +57,6 @@ train_idx, val_idx, test_idx = getSplitIndices(PATCHES_DIR)
 
 mlflow.set_tracking_uri('../4_training/mlruns')
 mlflow.set_experiment('lunar-crater-detection')
-
-
-# In[ ]:
 
 
 if 'tile' not in kept_labels.columns:
@@ -90,9 +83,6 @@ for tile_name in kept_labels['tile'].dropna().unique():
 print(f'{len(large_craters)} catalogue craters >= 10 km held back for false-positive exclusion')
 
 
-# In[ ]:
-
-
 # safeDivide
 # divides, returning 0 when the denominator is 0.
 # parameters:
@@ -117,9 +107,9 @@ def stackOrEmpty(parts, columns):
 
 
 # [source]: N. Khedkar (project partner) - 5_evaluation/evaluation_memmap.py
-# convert_to_memmap.py already applied the same percentileNormalise before
-# writing these, so the memmap path must not normalise again. it also indexes
-# flat, since the three arrays hold every patch rather than 1000 per file.
+# buildMemmaps in LRO_meemmap_class.py already applied percentileNormalise when
+# writing these, so the memmap path does not normalise again. it indexes flat,
+# since the three arrays hold every patch rather than 1000 per file.
 
 if params['patch_source'] == 'memmap':
     wac_all = np.load(os.path.join(PATCHES_DIR, 'wac_all.npy'), mmap_mode='r')
@@ -214,9 +204,6 @@ def patchMask(patch_idx):
     return loaded['mask'][patch_idx % 1000]
 
 
-# In[ ]:
-
-
 # patchTruth
 # the catalogue craters for one patch, in patch pixel coordinates, filtered to
 # those template matching could actually find.
@@ -248,12 +235,7 @@ def patchLarge(patch_idx):
     return truth_coords_for_patch(row['center_col'], row['center_row'], row['patch_lat'], large_col, large_row, large_diameters, margin=600)
 
 
-# ## Threshold sweep
-# 
-# Swept on validation, applied once to test.
-
-# In[ ]:
-
+# threshold sweep, swept on validation and applied once to test
 
 thresholds = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7]
 
@@ -317,10 +299,7 @@ def sweepThresholds(model, channel):
     return best_threshold, sweep_table
 
 
-# ## Crater and pixel metrics
-
-# In[ ]:
-
+# crater and pixel metrics
 
 # evaluateChannel
 # runs the model over the test patches at the chosen threshold and collects
@@ -430,12 +409,8 @@ def evaluateChannel(model, channel, best_threshold):
     return headline, arrays
 
 
-# ## Per-patch metrics
-# 
-# DeepMoon reports means across images, so these are the comparable figures.
-
-# In[ ]:
-
+# per patch metrics. DeepMoon reports means across images, so these are the
+# comparable figures
 
 # perPatchStats
 # turns the per patch counts into means and standard deviations, the estimator
@@ -460,10 +435,7 @@ def perPatchStats(per_patch):
     return stats
 
 
-# ## Run every channel
-
-# In[ ]:
-
+# run every channel
 
 results = {}
 
@@ -499,18 +471,12 @@ for channel in channels:
         mlflow.log_metrics({k: v for k, v in headline.items() if isinstance(v, (int, float))})
 
 
-# In[ ]:
-
-
 summary = pd.DataFrame([results[c]['headline'] for c in channels])
 
 display(summary[['channel', 'best_threshold', 'precision', 'recall', 'f1', 'tp', 'detected', 'truth']].round(3))
 
 
-# ## Channel comparison
-
-# In[ ]:
-
+# channel comparison
 
 channel_colours = {'wac': 'tab:blue', 'dem': 'tab:orange', 'both': 'tab:green'}
 channel_labels = {'wac': 'WAC only', 'dem': 'DEM only', 'both': 'WAC + DEM'}
@@ -545,10 +511,7 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'comparison.png'), dpi=200)
 plt.show()
 
 
-# ## Precision-recall against DeepMoon
-
-# In[ ]:
-
+# precision-recall against DeepMoon
 
 fig, ax = plt.subplots(figsize=(7, 6))
 
@@ -581,10 +544,7 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'precision_recall.png'), dpi=200)
 plt.show()
 
 
-# ## Precision and recall by crater diameter
-
-# In[ ]:
-
+# precision and recall by crater diameter
 
 bin_edges = [5, 10, 25, 50]
 bin_labels = ['1-2 km', '2-5 km', '5-10 km']
@@ -627,10 +587,7 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'diameter_bins.png'), dpi=200)
 plt.show()
 
 
-# ## Threshold sweep curves
-
-# In[ ]:
-
+# threshold sweep curves
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
 
@@ -661,10 +618,7 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'sweep.png'), dpi=200)
 plt.show()
 
 
-# ## Size-frequency distribution
-
-# In[ ]:
-
+# size-frequency distribution
 
 diameter_bins = np.logspace(np.log10(1), np.log10(10), 15)
 
@@ -691,10 +645,7 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'size_frequency.png'), dpi=200)
 plt.show()
 
 
-# ## Position and radius error
-
-# In[ ]:
-
+# position and radius error
 
 fig, axes = plt.subplots(1, 3, figsize=(14, 4))
 
@@ -722,10 +673,7 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'errors.png'), dpi=200)
 plt.show()
 
 
-# ## False positives by radius
-
-# In[ ]:
-
+# false positives by radius
 
 radius_bins = np.arange(5, 52, 1)
 
@@ -751,10 +699,7 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'false_positives.png'), dpi=200)
 plt.show()
 
 
-# ## Pixel confusion
-
-# In[ ]:
-
+# pixel confusion
 
 fig, axes = plt.subplots(1, len(channels), figsize=(4.5 * len(channels), 4))
 
@@ -785,10 +730,7 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'confusion.png'), dpi=200)
 plt.show()
 
 
-# ## Loss curves
-
-# In[ ]:
-
+# loss curves
 
 fig, ax = plt.subplots(figsize=(7, 5))
 
@@ -813,19 +755,9 @@ plt.savefig(os.path.join(RESULTS_ROOT, 'loss_curves.png'), dpi=200)
 plt.show()
 
 
-# ## Labelled craters
-# 
-# Circles are drawn in patch pixel coordinates, the same frame the model works in.
-# 
-# `patchTruth` turns catalogue craters into that frame: a per-tile linear fit maps Robbins
-# lon/lat to tile pixels, `truth_coords_for_patch` subtracts the patch origin and applies the
-# cos(lat) correction, giving (x, y, radius) in pixels. `template_match_t` returns detections
-# in the same frame, and `match_coords` pairs the two. Nothing is read off the image itself.
-# 
-# Diameter shown is `2 * radius * 0.1` km, since 1 px = 100 m.
-
-# In[ ]:
-
+# labelled craters, drawn in patch pixel coordinates, the frame both the catalogue
+# craters and the detections are in. diameters are 2 * radius * 0.1 km, since
+# 1 px = 100 m.
 
 deep_dive = 'both'
 

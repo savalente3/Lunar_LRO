@@ -29,9 +29,11 @@ Lunar_LRO/
 │   ├── Robbins_labels_analysis.ipynb       # exploratory analysis of the Robbins catalogue
 │   └── wac_tile_grid.png                   # WAC tile grid reference
 ├── 2_data_preparation/
+│   ├── data_merge.ipynb                    # label filtering for the single development tile (E300N1350)
 │   └── data_merge_alltiles.ipynb           # filters Robbins (D < 10 km, ARC_IMG > 0.5, 60°S–60°N) and assigns
 │                                           #   craters to tiles -> filtered_labels_alltiles.csv
 ├── 3_pre_processing/
+│   ├── data_pre_processing.ipynb           # patch extraction for the single development tile
 │   └── data_pre_processing_alltiles.ipynb  # patch extraction, ring masks and longitude split for all 8 tiles
 │                                           #   -> lunar_patches_alltiles/
 ├── 4_training/
@@ -42,6 +44,8 @@ Lunar_LRO/
 │   ├── LRO_meemmap_class.py                # builds float16 memmaps from the patches; Keras PyDataset over them
 │   ├── train.py                            # trains baseline or deep_U_net (focal cross-entropy), logs to MLflow
 │   ├── train_dilated_U_net.py              # trains dilated_U_net (focal Tversky), channel given on the command line
+│   ├── train_v2_final_dem.py               # the same run with the channel fixed to dem
+│   ├── train_v2_final_wac.py               # the same run with the channel fixed to wac
 │   ├── sweep_dilated_U_net.py              # staged architecture / loss screening for the Dilated U-Net
 │   ├── combine_csvs.py                     # merges per-run training histories into checkpoints/all_histories.csv
 │   └── checkpoints/all_histories.csv       # per-epoch training history of every run
@@ -50,12 +54,13 @@ Lunar_LRO/
 │   ├── evaluate_model.py                   # evaluates one checkpoint: threshold sweep on validation, metrics on test
 │   ├── compare_models.py                   # comparison figures and summary.csv across all evaluated runs
 │   ├── evaluation.ipynb                    # original interactive evaluation notebook (metric definitions)
+│   ├── evaluation.py                       # script export of evaluation.ipynb
+│   ├── run_eval.py                         # runs evaluation.ipynb end to end and saves its outputs
 │   └── results/
 │       ├── baseline/{wac,dem,both}/        # headline.json, sweep.csv, per_patch.csv, arrays.npz, labelled_*.png
 │       ├── deep_U_net/{wac,dem,both}/
 │       ├── dilated_U_net/{wac,dem,both}/
 │       └── comparison/                     # summary.csv and comparison figures
-├── archive/                                # superseded files kept for the record (see archive/README.md)
 ├── environment.yml
 └── README.md
 ```
@@ -173,14 +178,26 @@ automatically, and `run_name` in each `headline.json` records the checkpoint use
 
 ---
 
-## Credits
+## Credits and references
 
-- Each file header credits where its code came from with a `[source]:` line.
-  Files marked `[source]: N. Khedkar (project partner)` come from the project
-  partner (`baseline.py`, `losses.py`, `sweep_dilated_U_net.py`, `combine_csvs.py`,
-  `LRO_meemmap_class.py`).
-- The Baseline U-Net architecture and the crater extraction in
-  `crater_extraction.py` are adapted from DeepMoon
-  (Silburt et al. 2019, https://github.com/silburt/DeepMoon).
-- Tversky and focal Tversky losses follow Salehi et al. (2017) and Abraham and
-  Khan (2019).
+Every file header credits where its code came from with a `[source]:` line.
+Files marked `[source]: N. Khedkar (project partner)` come from the project
+partner: `baseline.py`, `dilated_U_net.py`, `losses.py`, `train_dilated_U_net.py`,
+`train_v2_final_dem.py`, `train_v2_final_wac.py`, `sweep_dilated_U_net.py`,
+`combine_csvs.py` and the functions in `LRO_meemmap_class.py`.
+
+The methods the code follows, as cited in the report:
+
+| Reference | Used in |
+|---|---|
+| Robbins, S.J., 2019, *Journal of Geophysical Research: Planets*, 124(4), pp. 871–892 | crater catalogue and `ARC_IMG` filter (`LRO_data_class.py`, `data_merge_alltiles.ipynb`) |
+| Barker, M.K. et al., 2016, *Icarus*, 273, pp. 346–355 | SLDEM2015 (`LRO_data_class.py`, `data_pre_processing_alltiles.ipynb`) |
+| Kadunc, N.O., 2022, *Sentinel Hub Blog* | per patch percentile normalisation (`percentileNormalise`) |
+| Silburt, A. et al., 2019, *Icarus*, 317, pp. 27–38 (https://github.com/silburt/DeepMoon) | ring masks, geographic split, Baseline U-Net, template and catalogue matching (`baseline.py`, `crater_extraction.py`) |
+| Ronneberger, O. et al., 2015, *MICCAI 2015*, pp. 234–241 | U-Net design (`deep_U_net.py`) |
+| Yu, F. and Koltun, V., 2016, *ICLR 2016* | dilated bottleneck (`dilated_U_net.py`) |
+| Oktay, O. et al., 2018, *MIDL 2018* | attention gates (`dilated_U_net.py`) |
+| Abraham, N. and Khan, N.M., 2019, *ISBI 2019*, pp. 683–687 | focal Tversky loss with attention gates (`losses.py`, `dilated_U_net.py`) |
+| Salehi, S.S.M. et al., 2017, *MLMI 2017*, pp. 379–387 | Tversky loss (`losses.py`) |
+| Mukhoti, J. et al., 2020, *NeurIPS 2020*, pp. 15288–15299 | threshold grid for focal losses (`evaluate_model.py`) |
+| Ali-Dib, M. et al., 2020, *Icarus*, 345, 113749 | DeepMoon F1 reference point (`compare_models.py`) |

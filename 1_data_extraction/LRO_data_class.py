@@ -1,3 +1,12 @@
+# LRO_data_class
+# shared data utilities used by every stage: loaders for the WAC tiles, SLDEM2015
+# and the Robbins catalogue, the split indices, normalisaiton, augmentation and
+# ring mask generation.
+# parameters:
+#         none, each funcion takes its own
+# outputs:
+#         the LunarDataset class and the functions below
+
 import os
 import requests
 import rasterio
@@ -94,6 +103,7 @@ def getRegionalLunarData(tile='WAC_GLOBAL_E300N1350_100M', data_dir='../1_data_e
     return data
  
  
+# [source]: Robbins (2019) - global lunar crater database, via kaggle sujaykapadnis/moon-crater-database-v1-robbins
 # getLunarRobbinsLabels
 # loads the Robbins (2019) lunar crater catalogue from kaggle.
 # parameters:
@@ -107,6 +117,7 @@ def getLunarRobbinsLabels(file_path="lunar_crater_database_robbins_2018.csv"):
         file_path,
     ))
 
+# [source]: Barker et al. (2016) - SLDEM2015, LOLA altimetry merged with Kaguya Terrain Camera DEMs
 # getDEMLunarData
 # downloads SLDEM2015 at 256 ppd (118 m/px) once, then memory-maps it so the
 # 11 GB stays on disk and only the touched pages are read.
@@ -132,9 +143,9 @@ def getDEMLunarData(data_dir='../1_data_extraction/data'):
  
  
 # getFilteredLabels
-# reads the crater subset written by the data_merge notebook.
+# reads the crater subset written by the data_merge notebooks.
 # parameters:
-#         path: csv written by data_merge, default '../2_data_preparation/filtered_labels.csv'
+#         path: csv written by data_merge_alltiles.ipynb, default '../2_data_preparation/filtered_labels.csv'
 # outputs:
 #         dataframe, or None if the file does not exist
 def getFilteredLabels(path='../2_data_preparation/filtered_labels.csv'):
@@ -191,6 +202,7 @@ def augment(wac, dem, mask, rng=None):
     return wac, dem, mask
 
 
+# [source]: Kadunc (2022) - percentile clipping and min-max scaling of satellite images for deep learning
 # percentileNormalise
 # clips a patch to its percentile range and rescales it to [0, 1], so a few
 # extreme pixels do not set the scale for the whole patch.
@@ -205,6 +217,7 @@ def percentileNormalise(patch, low=1, high=99):
     return (np.clip(patch, p_low, p_high) - p_low) / (p_high - p_low + 1e-8)
 
 
+# [source]: Silburt et al. (2019) - ring shaped crater masks rather than filled disks
 # maskGeneration
 # draws a 1 px ring for every catalogue crater whose centre falls inside the
 # patch. rings rather than filled disks so overlapping craters stay separable.
@@ -280,6 +293,7 @@ def fitTileMap(kept_labels, tile_name, catalogue, margin=2.0):
     )
 
 
+# [source]: Robbins (2019) - ARC_IMG, the fraction of the rim traced
 # rebuildMasks
 # redraws every stored mask from the catalogue without re-extracting patches,
 # and rewrites the .npz files and mask_all.npy in place.
@@ -359,11 +373,9 @@ def getNormalisedBatch(batch_num, patches_dir='../3_pre_processing/lunar_patches
     dem  = np.load(os.path.join(patches_dir, f'X_dem_{batch_num}.npz'))['arr_0']
     mask = np.load(os.path.join(patches_dir, f'X_mask_{batch_num}.npz'))['arr_0']
 
-    # both are float32 with variable per-patch range:
-    #   WAC - reflectance (I/F), tile range ~[0, 0.4], varies with illumination
-    #   DEM - elevation in km
-
-    # per-patch percentile normalisation
+    # both are float32 with a range that varies per patch, WAC reflectance (I/F)
+    # of roughly [0, 0.4] and DEM elevation in km, so each patch is normalised
+    # on its own
     norm_wac = np.zeros_like(wac, dtype=np.float32)
     norm_dem = np.zeros_like(dem, dtype=np.float32)
 

@@ -1,12 +1,9 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 # compare_models
 # redraws the shared report figures across a set of evaluated runs, reading the
 # per run artefacts evaluate_model.py wrote rather than re-running inference.
-# figure names, axes and styling follow evaluation.ipynb (Sofia Valente). every
-# run must carry the complete artefact set, so a figure either covers every
-# model in the comparison or is not drawn at all.
+# figure names, axes and styling follow evaluation.ipynb. every run must carry
+# the complete artefact set, so a figure either covers every model in the
+# comparison or is not drawn at all.
 # parameters:
 #         argv[1:]: series to include, each model_dir:channel, for example
 #                   dilated_U_net:both deep_U_net:both baseline:both.
@@ -32,11 +29,9 @@ RESULTS_ROOT = 'results'
 OUTPUT_DIR = os.path.join(RESULTS_ROOT, 'comparison')
 CHECKPOINT_DIR = '../4_training/checkpoints'
 
-# [ref]: Silburt et al. (2019), Lunar Crater Identification via Deep Learning,
-# Icarus 317, arXiv:1803.02192. the published post-cnn operating point, a
-# literature reference drawn in grey. the same architecture retrained on this
-# project's data is an evaluated series like any other, so the two appear side
-# by side and the difference between them is attributable to the data.
+# [source]: Silburt et al. (2019) - post-CNN precision and recall, mean and sd per image
+# [source]: Ali-Dib et al. (2020) - F1 computed from Silburt et al. (2019)
+# DeepMoon's published operating point, drawn in grey as a literature reference
 DEEPMOON_PUBLISHED = {'recall': 0.57, 'precision': 0.80, 'f1': 0.666, 'recall_sd': 0.20, 'precision_sd': 0.15}
 DEEPMOON_LABEL = 'DeepMoon, Silburt et al. (2019)'
 
@@ -48,6 +43,7 @@ MODEL_LABELS = {
     'dilated_U_net': 'Dilated U-Net',
 }
 
+# one colour per run, in discovery order
 PALETTE = ['tab:green', 'tab:blue', 'tab:orange', 'tab:purple', 'tab:red', 'tab:brown', 'tab:pink']
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -81,8 +77,8 @@ def discoverSeries(argv):
 #         model: results subdirectory for the model
 #         channel: results subdirectory for the channel
 # outputs:
-#         dict of label, colour placeholder, headline, sweep, arrays, or None
-#         when the run has not been evaluated
+#         dict of model, channel, label, headline, sweep and arrays. exits if an
+#         artefact is missing
 def loadSeries(model, channel):
 
     directory = os.path.join(RESULTS_ROOT, model, channel)
@@ -132,6 +128,8 @@ for n, series in enumerate(series_list):
 # parameters:
 #         fig: matplotlib figure
 #         name: file name within the comparison directory
+# outputs:
+#         none, the png is written to results/comparison
 def saveFigure(fig, name):
     fig.savefig(os.path.join(OUTPUT_DIR, name), dpi=200, bbox_inches='tight')
     plt.close(fig)
@@ -224,7 +222,7 @@ ax.legend(loc='lower left', fontsize=8)
 saveFigure(fig, 'precision_recall.png')
 
 
-# precision and recall by crater diameter, with the deep_U_net baseline marked
+# precision and recall by crater diameter, one panel per run
 
 bin_labels = series_list[0]['headline']['per_band']['bins']
 x = np.arange(len(bin_labels))

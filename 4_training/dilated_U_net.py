@@ -1,49 +1,19 @@
-"""
-dilated_U_net - attention-gated U-Net with a dilated bottleneck for small-crater
-detection (the Dilated U-Net in the report; originally model_v2.py).
+# [source]: N. Khedkar (project partner) - 4_training/model_v2.py, renamed dilated_U_net.py
+# [source]: Yu and Koltun (2016) - dilated convolutions, arXiv:1511.07122
+# [source]: Oktay et al. (2018) - attention gates, arXiv:1804.03999
+# [source]: Abraham and Khan (2019) - attention gates with the focal Tversky loss for small targets, arXiv:1810.07842
 
-Targets the sub-2 km crater detection gap left by the baseline models. The
-Deep U-Net (deep_U_net, Sofia Valente) and the Baseline U-Net (Silburt et al.
-2019) are recall-limited on small craters: they rarely mislabel what they find
-but miss a large fraction of the craters that are present. Model V2 combines
-three mechanisms, each addressing that recall limitation from a different angle
-and each supported by the segmentation literature.
+# dilated_U_net
+# a 3 level U-Net with a dilated bottleneck and an attention gate on every skip
+# connection. 3 poolings keep a 1 km crater, about 10 px, resolvable at the
+# bottleneck, and the dilated convolutions widen the receptive field for large
+# craters without a 4th pooling. same buildModel(params) interface as the other
+# model files.
+# parameters:
+#         none, depth and dilation rates are fixed below and the rest comes from params
+# outputs:
+#         a buildModel function
 
-The depth is 3. A 1 km crater is about 10 px at the 100 m/px WAC resolution, so
-each pooling stage roughly halves its extent; three poolings keep small craters
-resolvable at the bottleneck, whereas the four-level encoder of deep_U_net reduces
-them to sub-pixel. The bottleneck uses dilated convolutions (rates 1, 2, 4) to
-widen the receptive field for large-crater context without the extra pooling
-that would destroy small-crater resolution (Yu & Koltun 2016, "Multi-Scale
-Context Aggregation by Dilated Convolutions", ICLR, arXiv:1511.07122). Attention
-gates are applied to every skip connection so the decoder emphasises crater-like
-features and suppresses irrelevant terrain before concatenation; attention gates
-were introduced for exactly this problem - localising small, variable, sparse
-targets in a large background - and were shown to raise sensitivity to small
-structures at negligible parameter cost (Oktay et al. 2018, "Attention U-Net:
-Learning Where to Look for the Pancreas", arXiv:1804.03999; Schlemper et al.
-2019, "Attention gated networks: Learning to leverage salient regions in medical
-images", Medical Image Analysis).
-
-The model is trained with the focal Tversky loss (defined in losses). The
-pairing of attention gates with focal Tversky loss is taken directly from
-Abraham & Khan (2019, "A Novel Focal Tversky Loss Function with Improved
-Attention U-Net for Lesion Segmentation", IEEE ISBI, arXiv:1810.07842), who
-combine the two specifically for small-lesion segmentation under class
-imbalance: the attention gates help the network find the small targets, and the
-focal Tversky loss penalises missing them. That is the same problem structure as
-sub-2 km crater detection under the roughly 1:45 rim-to-background imbalance,
-which is why this combination is used here.
-
-The model exposes the same buildModel(params) interface as the other
-architectures in this project (deep_U_net (Sofia Valente) and
-baseline) and reads the same shared parameters, so the training pipeline, data
-and loss are held constant and only the network differs between runs.
-
-Usage:
-    from dilated_U_net import buildModel
-    model = buildModel(params)
-"""
 
 import keras
 from keras.layers import (Conv2D, MaxPooling2D, Conv2DTranspose, Concatenate,
@@ -51,13 +21,22 @@ from keras.layers import (Conv2D, MaxPooling2D, Conv2DTranspose, Concatenate,
 from keras.regularizers import l2
 
 
-# fixed architecture choices (see module docstring for the rationale)
-DEPTH = 3                 # three pooling levels - keeps small craters resolvable
-DILATION_RATES = (1, 2, 4)  # dilated bottleneck - receptive field without pooling
+# pooling levels and bottleneck dilation rates, fixed for every run
+DEPTH = 3
+DILATION_RATES = (1, 2, 4)
 
 
+# _conv_block
+# two convolutions, each followed by batch normalisation and relu.
+# parameters:
+#         x: input tensor
+#         f: filters in both convolutions
+#         FL: kernel size
+#         init: kernel initialiser
+#         reg: kernel regulariser
+# outputs:
+#         tensor, same height and width as x
 def _conv_block(x, f, FL, init, reg):
-    """Two 3x3 convolutions, each followed by batch normalisation and ReLU."""
     for _ in range(2):
         x = Conv2D(f, FL, padding='same', kernel_initializer=init,
                    kernel_regularizer=reg, use_bias=False)(x)
@@ -66,10 +45,18 @@ def _conv_block(x, f, FL, init, reg):
     return x
 
 
+# _dilated_bottleneck
+# three stacked convolutions at dilation rates 1, 2 and 4, so the bottleneck
+# sees large craters without pooling away the small ones.
+# parameters:
+#         x: input tensor
+#         f: filters in every convolution
+#         FL: kernel size
+#         init: kernel initialiser
+#         reg: kernel regulariser
+# outputs:
+#         tensor, same height and width as x
 def _dilated_bottleneck(x, f, FL, init, reg):
-    """Stacked dilated convolutions (rates 1, 2, 4). Widens the receptive field
-    to capture large-crater context without pooling away the resolution that
-    small craters require (Yu & Koltun 2016)."""
     for rate in DILATION_RATES:
         x = Conv2D(f, FL, padding='same', dilation_rate=rate,
                    kernel_initializer=init, kernel_regularizer=reg,
@@ -79,15 +66,18 @@ def _dilated_bottleneck(x, f, FL, init, reg):
     return x
 
 
+# _attention_gate
+# additive attention gate. the decoder map weights the encoder skip map pixel by
+# pixel, so background is suppressed before the two are concatenated.
+# parameters:
+#         skip: encoder feature map
+#         gating: decoder feature map at the same resolution
+#         inter: filters in the intermediate 1x1 convolutions
+#         init: kernel initialiser
+#         reg: kernel regulariser
+# outputs:
+#         tensor, the skip map multiplied by its attention coefficients in [0, 1]
 def _attention_gate(skip, gating, inter, init, reg):
-    """Additive attention gate (Oktay et al. 2018).
-
-    Uses the coarser decoder feature map (`gating`) to weight the finer encoder
-    skip feature map (`skip`), so the decoder attends to salient crater-like
-    regions and suppresses irrelevant background before concatenation. The gate
-    computes a per-pixel attention coefficient in [0, 1] and multiplies it into
-    the skip connection.
-    """
     theta = Conv2D(inter, 1, kernel_initializer=init, kernel_regularizer=reg)(skip)
     phi = Conv2D(inter, 1, kernel_initializer=init, kernel_regularizer=reg)(gating)
     act = Activation('relu')(add([theta, phi]))
@@ -96,6 +86,12 @@ def _attention_gate(skip, gating, inter, init, reg):
     return multiply([skip, psi])
 
 
+# buildModel
+# builds the Dilated U-Net, with a sigmoid output for the rim mask.
+# parameters:
+#         params: dict read for dim, input_channels, n_filters, FL, init, lmbda, dropout
+# outputs:
+#         keras model, input (dim, dim, input_channels), output (dim, dim, 1)
 def buildModel(params):
     dim = params['dim']
     ch = params['input_channels']
@@ -107,7 +103,7 @@ def buildModel(params):
 
     inp = keras.Input(shape=(dim, dim, ch))
 
-    # encoder: DEPTH blocks, each two convs then a 2x2 max-pool
+    # Encoder, DEPTH blocks of two convolutions then a 2x2 max pool
     skips = []
     x = inp
     for d in range(DEPTH):
@@ -115,10 +111,10 @@ def buildModel(params):
         skips.append(x)
         x = MaxPooling2D((2, 2), strides=(2, 2))(x)
 
-    # dilated bottleneck - resolution-preserving context
+    # Dilated bottleneck
     x = _dilated_bottleneck(x, base * 2 ** DEPTH, FL, init, reg)
 
-    # decoder: mirror the encoder, gate each skip with attention before merging
+    # Decoder, each skip gated by attention before the merge
     for d in reversed(range(DEPTH)):
         f = base * 2 ** d
         x = Conv2DTranspose(f, 2, strides=2, padding='same')(x)
@@ -127,7 +123,7 @@ def buildModel(params):
         x = Dropout(drop)(x)
         x = _conv_block(x, f, FL, init, reg)
 
-    # output: 1x1 convolution, sigmoid, single channel (per-pixel rim probability)
+    # Output layer
     out = Conv2D(1, 1, activation='sigmoid')(x)
 
     return keras.Model(inp, out, name='dilated_U_net')

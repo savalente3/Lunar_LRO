@@ -1,47 +1,14 @@
-#!/usr/bin/env python
-# coding: utf-8
-"""
-Final Model V2 training run.
+# [source]: N. Khedkar (project partner) - 4_training/train_v2_final_wac.py
 
-Trains the attention-gated Model V2 at the same budget as the baseline models
-(10% of the training split, 15 epochs) so the result is directly comparable to
-model_v1 (Sofia Valente) and the DeepMoon baseline (Silburt et al. 2019). This
-script produces the model that is evaluated and reported.
-
-The architecture and its rationale are documented in model_v2: a depth-3 U-Net
-with a dilated bottleneck and attention gates on every skip connection. The
-three mechanisms each target the small-crater recall limitation of the baseline
-models. Depth 3 keeps small craters resolvable rather than pooling them to
-sub-pixel. The dilated bottleneck widens the receptive field for context without
-that extra pooling (Yu & Koltun 2016, arXiv:1511.07122). The attention gates let
-the decoder localise the small, sparse crater targets and suppress irrelevant
-terrain, a mechanism shown to raise sensitivity to small structures at
-negligible cost (Oktay et al. 2018, arXiv:1804.03999; Schlemper et al. 2019).
-
-The loss is the focal Tversky loss (alpha 0.3, beta 0.7, gamma 1.333), defined
-in losses_v2. The Tversky loss penalises false negatives more heavily than false
-positives, biasing the model toward recall (Salehi, Erdogmus & Gholipour 2017,
-arXiv:1706.05721), and the focal exponent concentrates learning on the small,
-hard craters where recall is weakest. Pairing this loss with attention gates for
-small-target segmentation under class imbalance follows Abraham & Khan (2019,
-arXiv:1810.07842), whose problem structure - small targets, high imbalance -
-matches sub-2 km crater detection under the roughly 37:1 rim-to-background ratio.
-
-The input channel set is chosen by CHANNELS below: 'both' for WAC and DEM fusion
-or 'wac' for optical only. Run once per channel set to compare the two
-modalities under the same architecture and loss. The DEM resolution follows the
-project-wide DEM_PPD setting, so the run reads the patches for whichever
-resolution the pipeline is configured to.
-
-Uses the shared data loader and split utilities (LRO_meemmap_class and
-LRO_data_class (Sofia Valente)), the Model V2 architecture (model_v2) and the
-recall-oriented losses (losses_v2). MLflow logs parameters and per-epoch metrics
-only, with no artifact calls, so the run completes without depending on a
-writable artifact store.
-
-Usage:
-    python train_v2_final.py
-"""
+# train_v2_final_wac
+# the same run as train_dilated_U_net.py with the input channel fixed to wac.
+# parameters:
+#         none, the channel is fixed below
+# outputs:
+#         checkpoints/<run_name>.keras, the best weights by val_dice_coef
+#         checkpoints/history_<run_name>.csv, per epoch metrics
+#         checkpoints/<run_name>_params.json, the params used
+#         an mlflow run under 'lunar-crater-detection'
 
 import sys
 sys.path.append('../1_data_extraction')
@@ -54,24 +21,19 @@ import keras
 from keras import ops
 import tensorflow as tf
 
-from LRO_data_class import getSplitIndices, patchesDirName
+from LRO_data_class import getSplitIndices
 from LRO_meemmap_class import MemmapPatchSequence
-from model_v2 import buildModel
-from losses_v2 import build_loss
+from dilated_U_net import buildModel
+from losses import buildLoss
 
 
-# ---------------------------------------------------------------------------
-# configuration
-# ---------------------------------------------------------------------------
-
-# input modality: 'both' = WAC + DEM fusion, 'wac' = optical only.
-# run once per channel set (typically one per GPU) to compare the modalities.
+# input channels for this copy
 CHANNELS = 'wac'
 
 DATASET = 'alltiles'
-# patches directory follows the project-wide DEM_PPD resolution setting, so a
-# 256 ppd run reads its own patches and cannot silently use the 128 ppd set
-PATCHES_DIR = '../3_pre_processing/' + patchesDirName(DATASET)
+# the 256 ppd all tiles patches written by data_pre_processing_alltiles.ipynb
+PATCHES_DIR = '../3_pre_processing/lunar_patches_alltiles'
+RES_TAG = '256ppd'
 CKPT_DIR = 'checkpoints'
 
 SEED = 42
@@ -93,8 +55,7 @@ params = {
     'patience': 5,
     'queue': 64,
     'training_sample_percentage': 10,
-    'model': 'U-Net-v2-attention',
-    # loss: focal Tversky, recall-oriented (see losses_v2)
+    'model': 'dilated_U_net',
     'loss': 'focal_tversky',
     'tversky_alpha': 0.3,
     'tversky_beta': 0.7,
@@ -102,15 +63,15 @@ params = {
 }
 
 
-# ---------------------------------------------------------------------------
-# training-time metrics on the rim class.
-#
-# Validation loss is dominated by the background and is a weak proxy for rim
-# detection, so the run is monitored on rim overlap (Dice) and a soft,
-# threshold-free recall. val_dice_coef is used for early stopping and
-# checkpointing so the saved model is the best at rim detection.
-# ---------------------------------------------------------------------------
-
+# dice_coef
+# overlap between the predicted and true rim. val_loss is dominated by the
+# background, so early stopping and checkpointing follow this instead.
+# parameters:
+#         y_true: true mask
+#         y_pred: predicted probabilities
+#         smooth: added to both sides so an empty patch does not divide by zero
+# outputs:
+#         scalar tensor between 0 and 1
 def dice_coef(y_true, y_pred, smooth=1.0):
     yt = ops.reshape(y_true, (-1,))
     yp = ops.reshape(y_pred, (-1,))
@@ -118,6 +79,15 @@ def dice_coef(y_true, y_pred, smooth=1.0):
     return (2 * inter + smooth) / (ops.sum(yt) + ops.sum(yp) + smooth)
 
 
+# soft_recall
+# recall on the rim class without thresholding, so it can be followed while
+# training is still running.
+# parameters:
+#         y_true: true mask
+#         y_pred: predicted probabilities
+#         smooth: added to both sides so an empty patch does not divide by zero
+# outputs:
+#         scalar tensor between 0 and 1
 def soft_recall(y_true, y_pred, smooth=1.0):
     yt = ops.reshape(y_true, (-1,))
     yp = ops.reshape(y_pred, (-1,))
@@ -125,9 +95,16 @@ def soft_recall(y_true, y_pred, smooth=1.0):
     return (tp + smooth) / (ops.sum(yt) + smooth)
 
 
+# LiveMLflow
+# logs every metric as the epoch ends, so the mlflow curves move during training
+# rather than only once the run finishes.
 class LiveMLflow(keras.callbacks.Callback):
-    """Logs each epoch's metrics to MLflow as they complete, so the dashboard
-    curves update during training rather than only at the end."""
+
+    # on_epoch_end
+    # logs one epoch's metrics.
+    # parameters:
+    #         epoch: epoch index
+    #         logs: the metrics keras collected for the epoch
     def on_epoch_end(self, epoch, logs=None):
         if not logs:
             return
@@ -138,6 +115,9 @@ class LiveMLflow(keras.callbacks.Callback):
                 pass
 
 
+# main
+# subsamples the splits, builds and compiles the model, then trains it and logs
+# the run.
 def main():
     print(tf.config.list_physical_devices('GPU'), flush=True)
     keras.utils.set_random_seed(params['seed'])
@@ -160,17 +140,16 @@ def main():
 
     model = buildModel(params)
     model.compile(optimizer=keras.optimizers.Adam(params['learning_rate']),
-                  loss=build_loss(params),
+                  loss=buildLoss(params),
                   metrics=[dice_coef, soft_recall])
     model.summary()
 
     os.makedirs(CKPT_DIR, exist_ok=True)
 
-    # run_name records the model, loss, channel set and resolution, so the
-    # checkpoint and its later evaluation refer to the same configuration
-    res_tag = patchesDirName(DATASET).replace('lunar_patches_alltiles', '').lstrip('_') or '128ppd'
+    # the run name records model, loss, channels and resolution, so a checkpoint
+    # and its evaluation refer to the same configuration
     run_name = (f"{params['model']}_{params['loss']}_{params['channels']}_"
-                f"{params['n_filters']}f_s{params['seed']}_{pct}pct_{res_tag}")
+                f"{params['n_filters']}f_s{params['seed']}_{pct}pct_{RES_TAG}")
     print('run_name:', run_name, flush=True)
 
     callbacks = [

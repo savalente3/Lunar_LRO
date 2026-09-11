@@ -1,3 +1,10 @@
+# LRO_meemmap_class
+# writes the .npz patch batches out as flat memory-mapped arrays, and serves
+# keras batches from them during training.
+# parameters:
+#         none, each function and the class take their own
+# outputs:
+#         countPatches, buildMemmaps and the MemmapPatchSequence class
 
 import os
 import json

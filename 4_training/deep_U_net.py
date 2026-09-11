@@ -1,3 +1,15 @@
+# [source]: Ronneberger et al. (2015) - U-Net, 3x3 convolutions, 2x2 max pooling and skip connections
+
+# deep_U_net
+# the Deep U-Net: 4 contracting blocks from 32 to 256 filters, a 512 filter
+# connecting path and 4 expansive blocks with transposed convolutions and
+# dropout after each merge. same buildModel(params) interface as the other model
+# files, so train.py picks it up through params['model'].
+# parameters:
+#         none, everything comes from params
+# outputs:
+#         a buildModel function
+
 
 import keras
 from keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Concatenate, Dropout
@@ -99,6 +111,7 @@ def buildModel(params):
 
     a4P = MaxPooling2D((2, 2), strides=(2, 2))(a4)
 
+    # Connecting path
     u = Conv2D(
         params['n_filters'] * 16,
         params['FL'],

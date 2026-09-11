@@ -1,6 +1,13 @@
-# Crater extraction and matching
-# shared by every run - differences here would look like model differences
-# maxrad=50 not DeepMoon's 40: at 100 m/px, r=40 caps at 8 km. notes 13.5
+# crater_extraction
+# turns a predicted rim map into a crater list and matches it against the
+# catalogue. shared by every run, so a difference here would look like a model
+# difference. the largest template radius is 50 px rather than DeepMoon's 40,
+# since at 100 m/px a 40 px radius stops at 8 km.
+# parameters:
+#         none, each function takes its own
+# outputs:
+#         template_match_t, filter_to_detectable, match_coords,
+#         truth_coords_for_patch, filter_edge_craters, matchesExcludedCrater
 
 
 import numpy as np
@@ -8,9 +15,7 @@ import cv2
 from skimage.feature import match_template
 
 
-# [source]: Silburt et al. (2019) - utils/template_match_target.py
-# Turns the U-Net's fuzzy probability mask into a list of (x, y, radius) craters.
-
+# [source]: Silburt et al. (2019) - utils/template_match_target.py, https://github.com/silburt/DeepMoon
 # template_match_t
 # turns the model's probability map into a crater list by sliding a ring
 # template of every radius over it and keeping the good matches, then dropping
@@ -30,7 +35,7 @@ def template_match_t(target, minrad=5, maxrad=50, longlat_thresh2=1.8, rad_thres
     # ring thickness of the stamp
     rw = 2
 
-    # fuzzy prediction: crisp binary rings
+    # binarise the probability map at target_thresh
     target[target >= target_thresh] = 1
     target[target < target_thresh] = 0
 
@@ -38,7 +43,7 @@ def template_match_t(target, minrad=5, maxrad=50, longlat_thresh2=1.8, rad_thres
     coords = []
     corr = []
 
-    # slide a ring stamp of every size over the image and keeps good matches
+    # slide a ring stamp of every radius over the map and keep the good matches
     for r in radii:
         n = 2 * (r + rw + 1)
         template = np.zeros((n, n))
@@ -46,7 +51,7 @@ def template_match_t(target, minrad=5, maxrad=50, longlat_thresh2=1.8, rad_thres
 
         result = match_template(target, template, pad_input=True)
 
-        # score > 0.5
+        # positions whose correlation beats template_thresh
         index_r = np.where(result > template_thresh)
         coords_r = np.asarray(list(zip(*index_r)))
         corr_r = np.asarray(result[index_r])
@@ -81,21 +86,18 @@ def template_match_t(target, minrad=5, maxrad=50, longlat_thresh2=1.8, rad_thres
             corr[i] = best
             index[i] = False
             coords = coords[np.where(index == False)]
-            # DeepMoon drops from coords only - corr then indexes the wrong craters
+            # drop from corr as well as coords. DeepMoon drops from coords only,
+            # which leaves corr pointing at the wrong craters
             corr = corr[np.where(index == False)]
         N, i = len(coords), i + 1
 
     return coords
 
 
-# Drops craters outside the detectable radius range.
-# masks hold craters below minrad - no template can match them
-# counting those as misses penalises the model for what it can't find
-# same idea as DeepMoon's rmv_oor_csvs flag
-
 # filter_to_detectable
 # drops craters outside the radius range template matching can find, so they
-# are not counted as misses the model never had a chance at.
+# are not counted as misses the model never had a chance at. same idea as
+# DeepMoon's rmv_oor_csvs flag.
 # parameters:
 #         coords: array (n, 3) of x, y, radius
 #         minrad: smallest detectable radius in px, default 5
@@ -114,17 +116,11 @@ def filter_to_detectable(coords, minrad=5, maxrad=50):
     return coords[np.where(in_range == True)]
 
 
-# Matches detections against ground truth.
-# returns full pairs (det x,y,r then truth x,y,r) -> diameter bins, error plots
-# detections that matched nothing -> false positive inspection
-# multi_match_count -> how often one detection fell within tolerance of several truth
-# craters. DeepMoon tracks the same thing as frac_dupes. it is a diagnostic of how
-# tightly craters cluster relative to their own radius, not a loss - only the paired
-# crater is removed, so the rest stay matchable - see CONCEPT_Evaluation.md
-
+# [source]: Silburt et al. (2019) - utils/template_match_target.py, https://github.com/silburt/DeepMoon
 # match_coords
 # pairs detections with catalogue craters. both tolerances are divided by the
-# crater radius, so 'close' scales with crater size.
+# crater radius, so 'close' scales with crater size. each detection takes only
+# the closest catalogue crater within tolerance, so the others stay matchable.
 # parameters:
 #         ground_truth: array (n, 3) of catalogue craters
 #         crater_detections: array (m, 3) of detections
@@ -133,7 +129,8 @@ def filter_to_detectable(coords, minrad=5, maxrad=50):
 # outputs:
 #         match_count, detection_count, truth_count,
 #         matched_pairs (k, 6) as detection x,y,r then truth x,y,r,
-#         false_positives (j, 3), multi_match_count
+#         false_positives (j, 3), and multi_match_count, how often one detection
+#         fell within tolerance of several catalogue craters (DeepMoon's frac_dupes)
 def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh=1.0):
 
     remaining_truth = np.asarray(ground_truth).copy()
@@ -183,8 +180,6 @@ def match_coords(ground_truth, crater_detections, longlat_thresh=1.8, rad_thresh
 
     return (match_count, detection_count, truth_count, np.asarray(matched_pairs), np.asarray(false_positives), multi_match_count)
 
-
-# Robbins craters inside one patch, in patch pixel coords.
 
 # truth_coords_for_patch
 # converts catalogue craters from tile pixels into one patch's pixel frame,
@@ -248,12 +243,10 @@ def filter_edge_craters(coords, dim=256, cutrad=0.8):
     return coords[np.where(inside == True)]
 
 
-# A detection sitting on a catalogue crater excluded by the < 10 km label cut.
-# The crater is real, it just has no label, so the detection is not a model error. notes 18.4
-
 # matchesExcludedCrater
-# flags detections that sit on a crater of 10 km or more. those are outside
-# the label set, so they are excluded rather than counted as false positives.
+# flags detections that sit on a crater of 10 km or more. the crater is real but
+# outside the < 10 km label set, so the detection is excluded rather than
+# counted as a false positive.
 # parameters:
 #         detections: array (n, 3) of x, y, radius
 #         large_craters: array (m, 3) of craters >= 10 km in patch px

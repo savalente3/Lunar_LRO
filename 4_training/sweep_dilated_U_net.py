@@ -1,15 +1,15 @@
 # [source]: N. Khedkar (project partner) - 4_training/sweep_v2.py, renamed sweep_dilated_U_net.py
 
 # sweep_dilated_U_net
-# runs the v2 experiments one after another, each logged to mlflow per epoch and
-# each writing its own checkpoint and history, so nothing overwrites anything
-# else. staged on purpose: stage 1 varies only the architecture at the baseline
-# loss, stage 2 varies only the loss on the architecture stage 1 picked, so both
-# questions are answered without running the full grid.
+# runs the Dilated U-Net screening experiments one after another, each logged to
+# mlflow per epoch and each writing its own checkpoint and history, so nothing
+# overwrites anything else. stage 1 varies only the architecture at the focal
+# cross entropy loss, stage 2 varies only the loss on the architecture stage 1
+# picked, so both questions are answered without running the full grid.
 # set 'stage' and, for stage 2, 'stage1_winner' in params below.
 # parameters:
 #         stage: 1 architecture screen | 2 loss tuning
-#         stage1_winner: the v2 settings stage 1 selected
+#         stage1_winner: the architecture settings stage 1 selected
 #         training_sample_percentage: % of each split, the screen runs small
 # outputs:
 #         checkpoints/<run_name>.keras, the best weights by val dice
@@ -121,8 +121,8 @@ def diceCoef(y_true, y_pred, smooth=1.0):
 
 
 # softRecall
-# recall on the rim class without thresholding, so it tracks the weakness the v2
-# work is aimed at while training is still running.
+# recall on the rim class without thresholding, so small crater recall can be
+# followed while training is still running.
 # parameters:
 #         y_true: true mask
 #         y_pred: predicted probabilities
@@ -162,6 +162,8 @@ class LiveMLflow(keras.callbacks.Callback):
 #         overrides: the params this run changes
 #         train_idx: training patch indices
 #         val_idx: validation patch indices
+# outputs:
+#         the checkpoint, history and params files for the run, and its mlflow run
 def runOne(run_name, overrides, train_idx, val_idx):
 
     run_params = {**params, **overrides}
@@ -234,6 +236,7 @@ def runOne(run_name, overrides, train_idx, val_idx):
 print(tf.config.list_physical_devices('GPU'))
 
 
+# the same subsample for every configuration, drawn with the fixed seed
 train_idx, val_idx, test_idx = getSplitIndices(PATCHES_DIR)
 
 n_train = int(len(train_idx) * params['training_sample_percentage'] / 100)
